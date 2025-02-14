@@ -1,0 +1,83 @@
+defmodule Outerfaces.Bespoke.Plugs.BespokeCDNConsumerContentSecurityPlug do
+  @moduledoc """
+  A plug for setting Content Security Policy headers on responses.
+  To configure the CSP, pass a map of key-value pairs to the plug.
+  """
+  import Plug.Conn
+  alias Plug.Conn
+
+  @spec init(Keyword.t()) :: Keyword.t()
+  def init(opts \\ []), do: opts
+
+  @spec call(Conn.t(), Keyword.t()) :: Conn.t()
+  def call(%Conn{} = conn, opts) when is_list(opts) do
+    conn
+    |> register_before_send(fn conn ->
+      csp = build_content_security_policy(Keyword.get(opts, :source_host_options, []))
+
+      # nonce = generate_nonce()
+      conn
+      |> put_resp_header("content-security-policy", csp)
+      |> put_resp_header("x-content-type-options", "nosniff")
+      |> put_resp_header("x-frame-options", "deny")
+      |> put_resp_header(
+        "strict-transport-security",
+        "max-age=31536000; includeSubDomains; preload"
+      )
+      |> put_resp_header("referrer-policy", "no-referrer")
+
+      # |> assign(:csp_nonce, nonce)
+      # |> maybe_inject_nonce()
+    end)
+  end
+
+  @spec build_content_security_policy(
+          allowed_sources :: [%{protocol: String.t(), host: String.t(), port: non_neg_integer()}]
+        ) :: String.t()
+  defp build_content_security_policy(allowed_sources) do
+    allowed_sources_formatted =
+      allowed_sources
+      |> Enum.reduce("'self' ", fn src, acc ->
+        "#{acc} #{build_url(src)}"
+      end)
+
+    "base-uri 'none'; block-all-mixed-content;" <>
+      " default-src #{allowed_sources_formatted};" <>
+      " form-action 'self'; frame-ancestors 'none';" <>
+      " img-src #{allowed_sources_formatted};" <>
+      " object-src 'none'; script-src #{allowed_sources_formatted};" <>
+      " script-src-elem #{allowed_sources_formatted};" <>
+      " style-src 'unsafe-inline' #{allowed_sources_formatted};" <>
+      " connect-src #{allowed_sources_formatted};"
+
+    # " upgrade-insecure-requests"
+  end
+
+  @spec build_url(map()) :: String.t()
+  defp build_url(%{protocol: protocol, host: host, port: port}) do
+    "#{protocol}://#{host}:#{port}"
+  end
+
+  @spec maybe_inject_nonce(Conn.t()) :: Conn.t()
+  def maybe_inject_nonce(%Plug.Conn{request_path: request_path, resp_body: body} = conn) do
+    if request_path in ["/", "/index.html"] do
+      nonce = conn.assigns[:csp_nonce]
+
+      updated_body =
+        body
+        |> String.replace("<script", "<script nonce=\"#{nonce}\"")
+        |> String.replace("<style", "<style nonce=\"#{nonce}\"")
+
+      Plug.Conn.resp(conn, conn.status, updated_body)
+    else
+      conn
+    end
+  end
+
+  @spec generate_nonce() :: String.t()
+  def generate_nonce do
+    :crypto.strong_rand_bytes(16)
+    |> Base.encode64()
+    |> binary_part(0, 16)
+  end
+end
