@@ -1,4 +1,4 @@
-defmodule Outerfaces.Bespoke.Plugs.BespokeCDNConsumerServeIndex do
+defmodule Outerfaces.Odd.Plugs.OddCDNConsumerServeIndex do
   @moduledoc """
   ServeIndex plug to handle both static asset requests and index.html fallback.
   Handles CDN consumer requests.
@@ -6,7 +6,7 @@ defmodule Outerfaces.Bespoke.Plugs.BespokeCDNConsumerServeIndex do
 
   import Plug.Conn
 
-  alias Outerfaces.Bespoke.Plugs.BespokeCDNRoflImportPlug, as: ModifyCDNFiles
+  alias Outerfaces.Odd.Plugs.OddCDNRoflImportPlug, as: ModifyCDNFiles
 
   @behaviour Plug
 

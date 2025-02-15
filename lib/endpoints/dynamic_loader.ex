@@ -1,4 +1,4 @@
-defmodule Outerfaces.Bespoke.Endpoints.DynamicLoader do
+defmodule Outerfaces.Odd.Endpoints.DynamicLoader do
   @moduledoc """
   Custom endpoint loader for Outerfaces projects.
   """
@@ -6,11 +6,11 @@ defmodule Outerfaces.Bespoke.Endpoints.DynamicLoader do
 
   @behaviour Outerfaces.Endpoints.DynamicLoader.DynamicLoaderBehavior
 
-  alias Outerfaces.Bespoke.Endpoints.ConfigurationBuilder
-  alias Outerfaces.Bespoke.Plugs.BespokeCDNConsumerContentSecurityPlug
-  alias Outerfaces.Bespoke.Plugs.BespokeCDNConsumerServeIndex
-  alias Outerfaces.Bespoke.Plugs.BespokeCDNProviderContentSecurityPlug
-  alias Outerfaces.Bespoke.Plugs.BespokeEnvironmentPlug
+  alias Outerfaces.Odd.Endpoints.ConfigurationBuilder
+  alias Outerfaces.Odd.Plugs.OddCDNConsumerContentSecurityPlug
+  alias Outerfaces.Odd.Plugs.OddCDNConsumerServeIndex
+  alias Outerfaces.Odd.Plugs.OddCDNProviderContentSecurityPlug
+  alias Outerfaces.Odd.Plugs.OddEnvironmentPlug
   alias Outerfaces.Plugs.ServeIndex.DefaultServeIndex
 
   require Logger
@@ -49,7 +49,7 @@ defmodule Outerfaces.Bespoke.Endpoints.DynamicLoader do
 
   @impl true
   def prepare_endpoint_module(
-        "bespoke_cdn" = outerfaces_project_name,
+        "odd_cdn" = outerfaces_project_name,
         app_slug,
         endpoint_module,
         opts
@@ -99,7 +99,7 @@ defmodule Outerfaces.Bespoke.Endpoints.DynamicLoader do
 
           plug(Plug.Logger, log: :debug)
 
-          plug(BespokeCDNProviderContentSecurityPlug,
+          plug(OddCDNProviderContentSecurityPlug,
             origin_applications: origin_applications
           )
 
@@ -173,11 +173,11 @@ defmodule Outerfaces.Bespoke.Endpoints.DynamicLoader do
 
           plug(Plug.Logger, log: :debug)
 
-          plug(BespokeCDNConsumerContentSecurityPlug,
+          plug(OddCDNConsumerContentSecurityPlug,
             source_host_options: allowed_sources
           )
 
-          plug(BespokeEnvironmentPlug,
+          plug(OddEnvironmentPlug,
             protocol: url_scheme,
             host_names: host_names,
             cdn_port: cdn_port,
@@ -185,7 +185,7 @@ defmodule Outerfaces.Bespoke.Endpoints.DynamicLoader do
             api_port: api_port
           )
 
-          plug(BespokeCDNConsumerServeIndex,
+          plug(OddCDNConsumerServeIndex,
             index_path: "#{unquote(project_path)}/index.html",
             static_root: unquote(project_path)
           )

@@ -1,4 +1,4 @@
-defmodule Outerfaces.Bespoke.Plugs.BespokeCDNRoflImportPlug do
+defmodule Outerfaces.Odd.Plugs.OddCDNRoflImportPlug do
   # This magical regex is used to match and replace import statements in JavaScript files
   @local_cdn_imports_regex ~r/import\s+\{\s*([\s\S]*?)\s*\}\s+from\s+['"][^'"]*\[OUTERFACES_LOCAL_CDN\]\/([^'"]*)['"]\s*;?/is
 

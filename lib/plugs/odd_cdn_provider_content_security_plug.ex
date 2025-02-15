@@ -1,4 +1,4 @@
-defmodule Outerfaces.Bespoke.Plugs.BespokeCDNProviderContentSecurityPlug do
+defmodule Outerfaces.Odd.Plugs.OddCDNProviderContentSecurityPlug do
   @moduledoc """
   A plug for setting Content Security Policy headers on responses.
 

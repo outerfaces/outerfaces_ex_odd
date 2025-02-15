@@ -1,14 +1,12 @@
-defmodule Mix.Tasks.Outerfaces.IntoBespokeCdn do
+defmodule Mix.Tasks.Outerfaces.IntoOddCdn do
   @moduledoc """
-  Copies the specified files to the app's outerfaces/projects/bespoke_cdn directory.
+  Copies the specified files to the app's outerfaces/projects/odd_cdn directory.
   Defaults to the main Outerfaces JS files (lib: :outerfaces_js_core).
-  Other options:  lib=outerfaces_js_audio (TODO?)
 
   # TODO Create a hash digest of the files copied and store it in a file in the target directory.
 
   Examples:
-  mix outerfaces.into_bespoke_cdn
-  mix outerfaces.into_bespoke_cdn lib=outerfaces_js_audio (TODO?)
+  mix outerfaces.into_odd_cdn
 
   Currently depends on local source files.
 
@@ -17,7 +15,7 @@ defmodule Mix.Tasks.Outerfaces.IntoBespokeCdn do
   use Mix.Task
 
   @default_lib_slug "outerfaces_js_core"
-  @target_app_dir_base "outerfaces/projects/bespoke_cdn"
+  @target_app_dir_base "outerfaces/projects/odd_cdn"
   @registry_file_name "outerfaces.registry.json"
 
   def run(args \\ []) do

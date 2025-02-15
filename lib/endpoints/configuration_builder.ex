@@ -1,4 +1,4 @@
-defmodule Outerfaces.Bespoke.Endpoints.ConfigurationBuilder do
+defmodule Outerfaces.Odd.Endpoints.ConfigurationBuilder do
   @moduledoc false
 
   @spec dynamic_loader_https_endpoint_url_configuration(

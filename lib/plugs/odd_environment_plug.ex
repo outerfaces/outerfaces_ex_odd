@@ -1,4 +1,4 @@
-defmodule Outerfaces.Bespoke.Plugs.BespokeEnvironmentPlug do
+defmodule Outerfaces.Odd.Plugs.OddEnvironmentPlug do
   @moduledoc false
   import Plug.Conn
   alias Plug.Conn

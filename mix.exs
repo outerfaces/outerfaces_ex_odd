@@ -1,9 +1,9 @@
-defmodule OuterfacesBespoke.MixProject do
+defmodule OuterfacesOdd.MixProject do
   use Mix.Project
 
   def project do
     [
-      app: :outerfaces_bespoke,
+      app: :outerfaces_odd,
       version: "0.1.0",
       elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
@@ -21,7 +21,7 @@ defmodule OuterfacesBespoke.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:outerfaces, "~> 0.1.0"},
+      {:outerfaces, "~> 0.2.0"},
       {:jason, "~> 1.4"}
     ]
   end

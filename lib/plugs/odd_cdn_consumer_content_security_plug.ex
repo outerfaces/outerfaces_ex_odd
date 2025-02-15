@@ -1,4 +1,4 @@
-defmodule Outerfaces.Bespoke.Plugs.BespokeCDNConsumerContentSecurityPlug do
+defmodule Outerfaces.Odd.Plugs.OddCDNConsumerContentSecurityPlug do
   @moduledoc """
   A plug for setting Content Security Policy headers on responses.
   To configure the CSP, pass a map of key-value pairs to the plug.
