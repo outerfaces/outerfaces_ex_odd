@@ -1,7 +1,7 @@
 defmodule Outerfaces.Odd.Endpoints.ConfigurationBuilder do
   @moduledoc false
 
-  @spec dynamic_loader_https_endpoint_url_configuration(
+  @spec dynamic_loader_https_endpoint_url_configuration!(
           app_web_module :: atom(),
           host :: String.t(),
           port :: integer(),
@@ -10,7 +10,7 @@ defmodule Outerfaces.Odd.Endpoints.ConfigurationBuilder do
           keyfile_path :: String.t(),
           certfile_path :: String.t()
         ) :: Keyword.t()
-  def dynamic_loader_https_endpoint_url_configuration(
+  def dynamic_loader_https_endpoint_url_configuration!(
         app_web_module,
         host,
         port,
@@ -53,7 +53,28 @@ defmodule Outerfaces.Odd.Endpoints.ConfigurationBuilder do
     ]
   end
 
-  @spec dynamic_loader_http_endpoint_url_configuration(
+  def dynamic_loader_https_endpoint_url_configuration!(
+        app_web_module,
+        host,
+        port,
+        ip_address,
+        secret_key_base,
+        keyfile_path,
+        certfile_path
+      ) do
+    raise ArgumentError, """
+    Invalid arguments for #{__MODULE__}.dynamic_loader_https_endpoint_url_configuration!/6:
+    #{inspect(app_web_module: app_web_module,
+    host: host,
+    port: port,
+    ip_address: ip_address,
+    secret_key_base: secret_key_base,
+    keyfile_path: keyfile_path,
+    certfile_path: certfile_path)}
+    """
+  end
+
+  @spec dynamic_loader_http_endpoint_url_configuration!(
           app_web_module :: atom(),
           host :: String.t(),
           port :: integer(),
@@ -61,7 +82,7 @@ defmodule Outerfaces.Odd.Endpoints.ConfigurationBuilder do
             String.t() | {integer(), integer(), integer(), integer()},
           secret_key_base :: String.t()
         ) :: Keyword.t()
-  def dynamic_loader_http_endpoint_url_configuration(
+  def dynamic_loader_http_endpoint_url_configuration!(
         app_web_module,
         host,
         port,
@@ -84,6 +105,23 @@ defmodule Outerfaces.Odd.Endpoints.ConfigurationBuilder do
         layout: false
       ]
     ]
+  end
+
+  def dynamic_loader_http_endpoint_url_configuration!(
+        app_web_module,
+        host,
+        port,
+        ip_address,
+        secret_key_base
+      ) do
+    raise ArgumentError, """
+    Invalid arguments for #{__MODULE__}.dynamic_loader_http_endpoint_url_configuration!/5:
+    #{inspect(app_web_module: app_web_module,
+    host: host,
+    port: port,
+    ip_address: ip_address,
+    secret_key_base: secret_key_base)}
+    """
   end
 
   @spec build_ip_for_node_scope(String.t()) :: {integer, integer, integer, integer}

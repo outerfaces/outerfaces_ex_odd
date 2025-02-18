@@ -27,7 +27,7 @@ defmodule Outerfaces.Odd.Endpoints.DynamicLoader do
     url_scheme = "http"
 
     if url_scheme == "https" do
-      ConfigurationBuilder.dynamic_loader_https_endpoint_url_configuration(
+      ConfigurationBuilder.dynamic_loader_https_endpoint_url_configuration!(
         app_web_module,
         host,
         port,
@@ -37,7 +37,7 @@ defmodule Outerfaces.Odd.Endpoints.DynamicLoader do
         System.get_env("NODE_TLS_CERT_PATH")
       )
     else
-      ConfigurationBuilder.dynamic_loader_http_endpoint_url_configuration(
+      ConfigurationBuilder.dynamic_loader_http_endpoint_url_configuration!(
         app_web_module,
         host,
         port,

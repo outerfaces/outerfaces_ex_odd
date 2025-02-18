@@ -28,11 +28,28 @@ defmodule Mix.Tasks.Outerfaces.IntoOddCdn do
 
     version = get_version_from_registry_json(source_base_path, lib_slug)
     IO.puts("Found version #{version} in #{source_dir}..")
-    target_dir_with_version = "#{target_base_path}/#{lib_slug}/#{version}"
+
+    target_dir_with_version =
+      "#{target_base_path}/#{@target_app_dir_base}/#{lib_slug}/#{version}/"
+
+    File.mkdir_p!(target_dir_with_version)
     IO.puts("Copying library files from #{source_dir} to #{target_dir_with_version}..")
-    Mix.Tasks.Outerfaces.Copy.copy_files(source_dir, target_dir_with_version, source_base_path)
-    IO.puts("Library files copied to #{target_dir_with_version}}")
-    version
+    Mix.Tasks.Outerfaces.Copy.copy_files(source_dir, target_dir_with_version)
+    IO.puts("Library files copied to #{target_dir_with_version}")
+    remove_git_directories(target_dir_with_version)
+    {:ok, version}
+  end
+
+  defp remove_git_directories(dir) do
+    File.ls!(dir)
+    |> Enum.each(fn
+      ".git" ->
+        File.rm_rf!(Path.join(dir, ".git"))
+
+      file_or_dir ->
+        path = Path.join(dir, file_or_dir)
+        if File.dir?(path), do: remove_git_directories(path)
+    end)
   end
 
   defp parse_args(args) do
