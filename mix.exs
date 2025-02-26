@@ -21,7 +21,7 @@ defmodule OuterfacesOdd.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:outerfaces, "~> 0.2.2"},
+      {:outerfaces, "~> 0.2.3"},
       {:jason, "~> 1.4"}
     ]
   end
