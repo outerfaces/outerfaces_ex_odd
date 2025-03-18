@@ -44,7 +44,7 @@ defmodule Outerfaces.Odd.Plugs.OddCDNConsumerContentSecurityPlug do
     "base-uri 'none'; block-all-mixed-content;" <>
       " default-src #{allowed_sources_formatted};" <>
       " form-action 'self'; frame-ancestors 'none';" <>
-      " img-src #{allowed_sources_formatted};" <>
+      " img-src 'self' data: #{allowed_sources_formatted};" <>
       " object-src 'none'; script-src #{allowed_sources_formatted};" <>
       " script-src-elem #{allowed_sources_formatted};" <>
       " style-src 'unsafe-inline' #{allowed_sources_formatted};" <>
