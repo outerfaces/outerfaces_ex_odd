@@ -69,6 +69,7 @@ defmodule Outerfaces.Odd.Plugs.OddEnvironmentPlug do
     export default {
       outerfaces_cdn_url: '#{build_origin_path(protocol, host_name, cdn_port)}',
       outerfaces_api_url: '#{build_origin_path(protocol, host_name, api_port)}',
+      api_host: '#{host_name}:#{api_port}',
       #{extra_keypairs_formatted}
     }
     """
