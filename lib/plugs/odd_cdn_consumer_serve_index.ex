@@ -6,7 +6,7 @@ defmodule Outerfaces.Odd.Plugs.OddCDNConsumerServeIndex do
 
   import Plug.Conn
 
-  alias Outerfaces.Odd.Plugs.OddCDNRoflImportPlug, as: ModifyCDNFiles
+  alias Outerfaces.Odd.Plugs.OddCDNRoflJSPlug, as: ModifyCDNJSFiles
 
   @behaviour Plug
 
@@ -63,7 +63,7 @@ defmodule Outerfaces.Odd.Plugs.OddCDNConsumerServeIndex do
           true ->
             with {:ok, content} <- File.read(full_path),
                  modified_file <-
-                   ModifyCDNFiles.transform_javascript_cdn_imports(
+                   ModifyCDNJSFiles.transform_javascript_cdn_imports_and_exports(
                      content,
                      cdn_host_name,
                      cdn_port,
