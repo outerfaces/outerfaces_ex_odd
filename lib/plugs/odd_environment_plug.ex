@@ -51,6 +51,11 @@ defmodule Outerfaces.Odd.Plugs.OddEnvironmentPlug do
     extra_keypairs_formatted =
       extra_keypairs
       |> Enum.map(fn
+        # Support dynamic values via MFA tuples {Module, :function, args}
+        {key, {module, function, args}} when is_atom(module) and is_atom(function) and is_list(args) ->
+          resolved_value = apply(module, function, args)
+          "#{do_normalize_key(key)}: #{do_normalize_value(resolved_value)}"
+
         {key, value} when is_list(value) ->
           formatted_values =
             value
