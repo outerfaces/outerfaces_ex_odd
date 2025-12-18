@@ -35,20 +35,34 @@ defmodule Outerfaces.Odd.Plugs.OddCDNConsumerContentSecurityPlug do
           allowed_sources :: [%{protocol: String.t(), host: String.t(), port: non_neg_integer()}]
         ) :: String.t()
   defp build_content_security_policy(allowed_sources) do
-    allowed_sources_formatted =
+    # Separate HTTP/HTTPS sources from WebSocket sources
+    # WebSocket protocols (ws://, wss://) should only be in connect-src
+    {http_sources, _ws_sources} =
       allowed_sources
-      |> Enum.reduce("'self' ", fn src, acc ->
-        "#{acc} #{build_url(src)}"
+      |> Enum.split_with(fn %{protocol: protocol} ->
+        protocol in ["http", "https"]
       end)
 
+    # Format HTTP sources (no leading 'self' - we'll add it per-directive)
+    http_sources_formatted =
+      http_sources
+      |> Enum.map(&build_url/1)
+      |> Enum.join(" ")
+
+    # For connect-src, include both HTTP and WebSocket sources
+    connect_sources_formatted =
+      allowed_sources
+      |> Enum.map(&build_url/1)
+      |> Enum.join(" ")
+
     "base-uri 'none'; block-all-mixed-content;" <>
-      " default-src #{allowed_sources_formatted};" <>
+      " default-src 'self' #{http_sources_formatted};" <>
       " form-action 'self'; frame-ancestors 'none';" <>
-      " img-src 'self' data: #{allowed_sources_formatted};" <>
-      " object-src 'none'; script-src #{allowed_sources_formatted};" <>
-      " script-src-elem #{allowed_sources_formatted};" <>
-      " style-src 'unsafe-inline' #{allowed_sources_formatted};" <>
-      " connect-src #{allowed_sources_formatted};"
+      " img-src 'self' data: #{http_sources_formatted};" <>
+      " object-src 'none'; script-src 'self' #{http_sources_formatted};" <>
+      " script-src-elem 'self' #{http_sources_formatted};" <>
+      " style-src 'unsafe-inline' 'self' #{http_sources_formatted};" <>
+      " connect-src 'self' #{connect_sources_formatted};"
 
     # " upgrade-insecure-requests"
   end

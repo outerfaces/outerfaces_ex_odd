@@ -14,14 +14,17 @@ defmodule Outerfaces.Odd.Plugs.OddCDNRoflCSSPlug do
         cdn_service_host_port,
         url_scheme
       ) do
-    content = normalize_newlines(file_content)
+    cdn_base_url = "#{url_scheme}://#{cdn_service_host_name}:#{cdn_service_host_port}"
+    transform_css_cdn_imports_with_base_url(file_content, cdn_base_url)
+  end
 
-    replace_cdn_imports(
-      content,
-      url_scheme,
-      cdn_service_host_name,
-      cdn_service_host_port
-    )
+  @spec transform_css_cdn_imports_with_base_url(
+          file_content :: String.t(),
+          cdn_base_url :: String.t()
+        ) :: String.t()
+  def transform_css_cdn_imports_with_base_url(file_content, cdn_base_url) do
+    content = normalize_newlines(file_content)
+    replace_cdn_imports_with_base_url(content, cdn_base_url)
   end
 
   @spec normalize_newlines(String.t()) :: String.t()
@@ -43,12 +46,19 @@ defmodule Outerfaces.Odd.Plugs.OddCDNRoflCSSPlug do
              is_binary(cdn_protocol) and
              is_binary(cdn_host) and
              is_integer(cdn_port) do
-    replacement = "@import '#{cdn_protocol}://#{cdn_host}:#{cdn_port}/\\2'"
+    cdn_base_url = "#{cdn_protocol}://#{cdn_host}:#{cdn_port}"
+    replace_cdn_imports_with_base_url(file_body, cdn_base_url)
+  end
 
+  # New function that works with base URL (supports both absolute and proxy-relative URLs)
+  @spec replace_cdn_imports_with_base_url(file_body :: String.t(), cdn_base_url :: String.t()) ::
+          String.t()
+  def replace_cdn_imports_with_base_url(file_body, cdn_base_url)
+      when is_binary(file_body) and is_binary(cdn_base_url) do
     Regex.replace(
       @local_cdn_imports_regex,
       file_body,
-      replacement
+      "@import '#{cdn_base_url}/\\2'"
     )
   end
 end
