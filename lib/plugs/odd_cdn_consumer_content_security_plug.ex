@@ -13,9 +13,10 @@ defmodule Outerfaces.Odd.Plugs.OddCDNConsumerContentSecurityPlug do
   def call(%Conn{} = conn, opts) when is_list(opts) do
     conn
     |> register_before_send(fn conn ->
-      csp = build_content_security_policy(Keyword.get(opts, :source_host_options, []))
+      # Use existing nonce if already set (e.g., by serve_index_html), otherwise generate new one
+      nonce = conn.assigns[:csp_nonce] || generate_nonce()
+      csp = build_content_security_policy(Keyword.get(opts, :source_host_options, []), nonce)
 
-      # nonce = generate_nonce()
       conn
       |> put_resp_header("content-security-policy", csp)
       |> put_resp_header("x-content-type-options", "nosniff")
@@ -25,16 +26,15 @@ defmodule Outerfaces.Odd.Plugs.OddCDNConsumerContentSecurityPlug do
         "max-age=31536000; includeSubDomains; preload"
       )
       |> put_resp_header("referrer-policy", "no-referrer")
-
-      # |> assign(:csp_nonce, nonce)
-      # |> maybe_inject_nonce()
+      |> assign(:csp_nonce, nonce)
     end)
   end
 
   @spec build_content_security_policy(
-          allowed_sources :: [%{protocol: String.t(), host: String.t(), port: non_neg_integer()}]
+          allowed_sources :: [%{protocol: String.t(), host: String.t(), port: non_neg_integer()}],
+          nonce :: String.t()
         ) :: String.t()
-  defp build_content_security_policy(allowed_sources) do
+  defp build_content_security_policy(allowed_sources, nonce) do
     # Separate HTTP/HTTPS sources from WebSocket sources
     # WebSocket protocols (ws://, wss://) should only be in connect-src
     {http_sources, _ws_sources} =
@@ -52,15 +52,16 @@ defmodule Outerfaces.Odd.Plugs.OddCDNConsumerContentSecurityPlug do
     # For connect-src, include both HTTP and WebSocket sources
     connect_sources_formatted =
       allowed_sources
-      |> Enum.map(&build_url/1)
+      |> Enum.flat_map(&expand_connect_source/1)
+      |> Enum.uniq()
       |> Enum.join(" ")
 
-    "base-uri 'none'; block-all-mixed-content;" <>
+    "base-uri 'self'; block-all-mixed-content;" <>
       " default-src 'self' #{http_sources_formatted};" <>
       " form-action 'self'; frame-ancestors 'none';" <>
       " img-src 'self' data: #{http_sources_formatted};" <>
-      " object-src 'none'; script-src 'self' #{http_sources_formatted};" <>
-      " script-src-elem 'self' #{http_sources_formatted};" <>
+      " object-src 'none'; script-src 'nonce-#{nonce}' 'self' #{http_sources_formatted};" <>
+      " script-src-elem 'nonce-#{nonce}' 'self' #{http_sources_formatted};" <>
       " style-src 'unsafe-inline' 'self' #{http_sources_formatted};" <>
       " connect-src 'self' #{connect_sources_formatted};"
 
@@ -71,6 +72,19 @@ defmodule Outerfaces.Odd.Plugs.OddCDNConsumerContentSecurityPlug do
   defp build_url(%{protocol: protocol, host: host, port: port}) do
     "#{protocol}://#{host}:#{port}"
   end
+
+  # For connect-src, include websocket equivalents for HTTP(S) sources
+  defp expand_connect_source(%{protocol: protocol} = source)
+       when protocol in ["http", "https"] do
+    ws_protocol = if protocol == "https", do: "wss", else: "ws"
+
+    [
+      build_url(source),
+      build_url(%{source | protocol: ws_protocol})
+    ]
+  end
+
+  defp expand_connect_source(source), do: [build_url(source)]
 
   @spec maybe_inject_nonce(Conn.t()) :: Conn.t()
   def maybe_inject_nonce(%Plug.Conn{request_path: request_path, resp_body: body} = conn) do

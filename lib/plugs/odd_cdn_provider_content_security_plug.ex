@@ -7,7 +7,7 @@ defmodule Outerfaces.Odd.Plugs.OddCDNProviderContentSecurityPlug do
   alias Plug.Conn
 
   # upgrade-insecure-requests"
-  @hardcoded_csp "base-uri 'none'; block-all-mixed-content; default-src 'self';" <>
+  @hardcoded_csp "base-uri 'self'; block-all-mixed-content; default-src 'self';" <>
                    " form-action 'self'; frame-ancestors 'none'; img-src 'self';" <>
                    " object-src 'none'; script-src 'self';" <>
                    " style-src 'self' 'unsafe-inline';"
