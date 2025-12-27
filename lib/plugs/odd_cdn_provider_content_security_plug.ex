@@ -45,6 +45,7 @@ defmodule Outerfaces.Odd.Plugs.OddCDNProviderContentSecurityPlug do
       |> put_resp_header("referrer-policy", "no-referrer")
       |> put_resp_header("access-control-allow-methods", "GET, POST, OPTIONS")
       |> put_resp_header("access-control-allow-headers", "Content-Type, Authorization")
+      |> put_resp_header("cross-origin-resource-policy", "cross-origin")
 
       # |> assign(:csp_nonce, nonce)
       # |> maybe_inject_nonce()

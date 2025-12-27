@@ -17,6 +17,9 @@ defmodule Outerfaces.Odd.Plugs.OddCDNConsumerContentSecurityPlug do
       nonce = conn.assigns[:csp_nonce] || generate_nonce()
       csp = build_content_security_policy(Keyword.get(opts, :source_host_options, []), nonce)
 
+      # Check if cross-origin isolation is enabled (for AudioWorklet/SharedArrayBuffer)
+      enable_cross_origin_isolation = Keyword.get(opts, :enable_cross_origin_isolation, false)
+
       conn
       |> put_resp_header("content-security-policy", csp)
       |> put_resp_header("x-content-type-options", "nosniff")
@@ -26,9 +29,19 @@ defmodule Outerfaces.Odd.Plugs.OddCDNConsumerContentSecurityPlug do
         "max-age=31536000; includeSubDomains; preload"
       )
       |> put_resp_header("referrer-policy", "no-referrer")
+      |> maybe_put_cross_origin_isolation_headers(enable_cross_origin_isolation)
       |> assign(:csp_nonce, nonce)
     end)
   end
+
+  @spec maybe_put_cross_origin_isolation_headers(Conn.t(), boolean()) :: Conn.t()
+  defp maybe_put_cross_origin_isolation_headers(conn, true) do
+    conn
+    |> put_resp_header("cross-origin-opener-policy", "same-origin")
+    |> put_resp_header("cross-origin-embedder-policy", "require-corp")
+  end
+
+  defp maybe_put_cross_origin_isolation_headers(conn, _), do: conn
 
   @spec build_content_security_policy(
           allowed_sources :: [%{protocol: String.t(), host: String.t(), port: non_neg_integer()}],
@@ -63,6 +76,7 @@ defmodule Outerfaces.Odd.Plugs.OddCDNConsumerContentSecurityPlug do
       " object-src 'none'; script-src 'nonce-#{nonce}' 'self' #{http_sources_formatted};" <>
       " script-src-elem 'nonce-#{nonce}' 'self' #{http_sources_formatted};" <>
       " style-src 'unsafe-inline' 'self' #{http_sources_formatted};" <>
+      " style-src-elem 'unsafe-inline' 'self' #{http_sources_formatted};" <>
       " connect-src 'self' #{connect_sources_formatted};"
 
     # " upgrade-insecure-requests"
