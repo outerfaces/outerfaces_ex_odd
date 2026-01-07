@@ -31,7 +31,7 @@ defmodule Outerfaces.Odd.Plugs.OddEnvironmentPlug do
   @spec build_pseudo_file(Keyword.t(), String.t() | nil) :: String.t()
 
   defp build_pseudo_file(opts, origin) do
-    # Check for unified proxy mode - returns relative URLs
+    # Check for unified proxy mode - returns origin-based URLs
     unified_proxy_mode = Keyword.get(opts, :unified_proxy_mode, false)
 
     if unified_proxy_mode do
@@ -41,8 +41,8 @@ defmodule Outerfaces.Odd.Plugs.OddEnvironmentPlug do
     end
   end
 
-  # Unified proxy mode - all services under single origin with path prefixes
-  # Uses window.location.origin for absolute URLs that work with URL constructor
+  # Unified proxy mode - all services under single origin
+  # The frontend adds /api prefix itself, so we just provide the origin
   defp build_unified_proxy_pseudo_file(opts) do
     extra_key_value_pairs = Keyword.get(opts, :extra_key_value_pairs, [])
 
@@ -54,14 +54,14 @@ defmodule Outerfaces.Odd.Plugs.OddEnvironmentPlug do
       """
       export default {
         outerfaces_cdn_url: window.location.origin + '/cdn',
-        outerfaces_api_url: window.location.origin + '/api'
+        outerfaces_api_url: window.location.origin
       }
       """
     else
       """
       export default {
         outerfaces_cdn_url: window.location.origin + '/cdn',
-        outerfaces_api_url: window.location.origin + '/api',
+        outerfaces_api_url: window.location.origin,
         api_host: window.location.host,
         #{extra_keypairs_formatted}
       }
