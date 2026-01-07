@@ -2,6 +2,10 @@ defmodule Outerfaces.Odd.Plugs.OddCDNConsumerContentSecurityPlug do
   @moduledoc """
   A plug for setting Content Security Policy headers on responses.
   To configure the CSP, pass a map of key-value pairs to the plug.
+
+  Supports two modes:
+  - `use_self_policy: true` - Simple 'self' based policy for unified proxy mode
+  - `source_host_options: [...]` - Explicit allowed sources list (default)
   """
   import Plug.Conn
   alias Plug.Conn
@@ -15,7 +19,16 @@ defmodule Outerfaces.Odd.Plugs.OddCDNConsumerContentSecurityPlug do
     |> register_before_send(fn conn ->
       # Use existing nonce if already set (e.g., by serve_index_html), otherwise generate new one
       nonce = conn.assigns[:csp_nonce] || generate_nonce()
-      csp = build_content_security_policy(Keyword.get(opts, :source_host_options, []), nonce)
+
+      # Check if using simplified 'self' policy for unified proxy mode
+      use_self_policy = Keyword.get(opts, :use_self_policy, false)
+
+      csp =
+        if use_self_policy do
+          build_self_content_security_policy(nonce)
+        else
+          build_content_security_policy(Keyword.get(opts, :source_host_options, []), nonce)
+        end
 
       # Check if cross-origin isolation is enabled (for AudioWorklet/SharedArrayBuffer)
       enable_cross_origin_isolation = Keyword.get(opts, :enable_cross_origin_isolation, false)
@@ -42,6 +55,21 @@ defmodule Outerfaces.Odd.Plugs.OddCDNConsumerContentSecurityPlug do
   end
 
   defp maybe_put_cross_origin_isolation_headers(conn, _), do: conn
+
+  # Simple 'self' based policy for unified proxy mode
+  # All services are on the same origin, so 'self' covers everything
+  @spec build_self_content_security_policy(String.t()) :: String.t()
+  defp build_self_content_security_policy(nonce) do
+    "base-uri 'self'; block-all-mixed-content;" <>
+      " default-src 'self';" <>
+      " form-action 'self'; frame-ancestors 'none';" <>
+      " img-src 'self' data:;" <>
+      " object-src 'none'; script-src 'nonce-#{nonce}' 'self' 'wasm-unsafe-eval';" <>
+      " script-src-elem 'nonce-#{nonce}' 'self';" <>
+      " style-src 'unsafe-inline' 'self';" <>
+      " style-src-elem 'unsafe-inline' 'self';" <>
+      " connect-src 'self';"
+  end
 
   @spec build_content_security_policy(
           allowed_sources :: [%{protocol: String.t(), host: String.t(), port: non_neg_integer()}],

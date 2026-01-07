@@ -31,6 +31,46 @@ defmodule Outerfaces.Odd.Plugs.OddEnvironmentPlug do
   @spec build_pseudo_file(Keyword.t(), String.t() | nil) :: String.t()
 
   defp build_pseudo_file(opts, origin) do
+    # Check for unified proxy mode - returns relative URLs
+    unified_proxy_mode = Keyword.get(opts, :unified_proxy_mode, false)
+
+    if unified_proxy_mode do
+      build_unified_proxy_pseudo_file(opts)
+    else
+      build_multi_port_pseudo_file(opts, origin)
+    end
+  end
+
+  # Unified proxy mode - all services under single origin with path prefixes
+  # Uses window.location.origin for absolute URLs that work with URL constructor
+  defp build_unified_proxy_pseudo_file(opts) do
+    extra_key_value_pairs = Keyword.get(opts, :extra_key_value_pairs, [])
+
+    extra_keypairs_formatted =
+      extra_key_value_pairs
+      |> format_extra_keypairs()
+
+    if extra_keypairs_formatted == "" do
+      """
+      export default {
+        outerfaces_cdn_url: window.location.origin + '/cdn',
+        outerfaces_api_url: window.location.origin + '/api'
+      }
+      """
+    else
+      """
+      export default {
+        outerfaces_cdn_url: window.location.origin + '/cdn',
+        outerfaces_api_url: window.location.origin + '/api',
+        api_host: window.location.host,
+        #{extra_keypairs_formatted}
+      }
+      """
+    end
+  end
+
+  # Multi-port mode - separate ports for each service
+  defp build_multi_port_pseudo_file(opts, origin) do
     protocol = Keyword.get(opts, :protocol)
     host_names = Keyword.get(opts, :host_names)
     cdn_port = Keyword.get(opts, :cdn_port)
@@ -89,27 +129,7 @@ defmodule Outerfaces.Odd.Plugs.OddEnvironmentPlug do
        when is_binary(protocol) and is_binary(host_name) and
               is_integer(cdn_port) and is_integer(api_port) and
               is_list(extra_keypairs) do
-    extra_keypairs_formatted =
-      extra_keypairs
-      |> Enum.map(fn
-        # Support dynamic values via MFA tuples {Module, :function, args}
-        {key, {module, function, args}} when is_atom(module) and is_atom(function) and is_list(args) ->
-          resolved_value = apply(module, function, args)
-          "#{do_normalize_key(key)}: #{do_normalize_value(resolved_value)}"
-
-        {key, value} when is_list(value) ->
-          formatted_values =
-            value
-            |> Enum.map(&do_normalize_value/1)
-            |> Enum.join(", ")
-
-          "#{do_normalize_key(key)}: [#{formatted_values}]"
-
-        {key, value} ->
-          "#{do_normalize_key(key)}: #{do_normalize_value(value)}"
-      end)
-      |> Enum.join(",\n  ")
-      |> String.trim()
+    extra_keypairs_formatted = format_extra_keypairs(extra_keypairs)
 
     """
     export default {
@@ -119,6 +139,31 @@ defmodule Outerfaces.Odd.Plugs.OddEnvironmentPlug do
       #{extra_keypairs_formatted}
     }
     """
+  end
+
+  defp format_extra_keypairs([]), do: ""
+
+  defp format_extra_keypairs(extra_keypairs) do
+    extra_keypairs
+    |> Enum.map(fn
+      # Support dynamic values via MFA tuples {Module, :function, args}
+      {key, {module, function, args}} when is_atom(module) and is_atom(function) and is_list(args) ->
+        resolved_value = apply(module, function, args)
+        "#{do_normalize_key(key)}: #{do_normalize_value(resolved_value)}"
+
+      {key, value} when is_list(value) ->
+        formatted_values =
+          value
+          |> Enum.map(&do_normalize_value/1)
+          |> Enum.join(", ")
+
+        "#{do_normalize_key(key)}: [#{formatted_values}]"
+
+      {key, value} ->
+        "#{do_normalize_key(key)}: #{do_normalize_value(value)}"
+    end)
+    |> Enum.join(",\n  ")
+    |> String.trim()
   end
 
   @spec do_normalize_key(String.t() | atom()) :: String.t() | nil
