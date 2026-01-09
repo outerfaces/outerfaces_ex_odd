@@ -11,6 +11,8 @@ defmodule Outerfaces.Odd.Endpoints.DynamicLoader do
   alias Outerfaces.Odd.Plugs.OddCDNConsumerServeIndex
   alias Outerfaces.Odd.Plugs.OddCDNProviderContentSecurityPlug
   alias Outerfaces.Odd.Plugs.OddEnvironmentPlug
+  alias Outerfaces.Odd.Plugs.OddRevProxyPlug
+  alias Outerfaces.Odd.Plugs.OddRevCacheHeadersPlug
   alias Outerfaces.Plugs.ServeIndex.DefaultServeIndex
 
   require Logger
@@ -172,6 +174,10 @@ defmodule Outerfaces.Odd.Endpoints.DynamicLoader do
           use Phoenix.Endpoint, otp_app: unquote(app_slug)
 
           plug(Plug.Logger, log: :debug)
+
+          # NEW: Rev plugs (MUST be first for rev URL parsing)
+          plug(OddRevProxyPlug, mismatch_behavior: :redirect)
+          plug(OddRevCacheHeadersPlug)
 
           plug(OddCDNConsumerContentSecurityPlug,
             source_host_options: allowed_sources
