@@ -3,22 +3,23 @@ defmodule Outerfaces.Odd.Plugs.OddCDNRoflHTMLPlug do
   Provides HTML transformation functions for rewriting [OUTERFACES_ODD_CDN] and
   [OUTERFACES_ODD_SPA] tokens in HTML src/href attributes.
 
-  This module supports dual-mode operation:
-  - Rev-pinned mode: Rewrites tokens to `/__rev/<rev>/cdn/...` or `/__rev/<rev>/spa/...`
-  - Non-rev mode: Rewrites ODD_CDN tokens to absolute URLs (e.g., `http://localhost:60032/...`)
-
-  The mode is determined by checking `conn.assigns.outerfaces_rev`. If present,
-  rev-pinned mode is used; otherwise, absolute URLs are generated.
+  This module always emits rev-pinned URLs in the canonical format:
+  - CDN: `<cdn_origin>/__rev/<rev>/cdn/<path>`
+  - SPA: `/__rev/<rev>/spa/<path>`
 
   ## Examples
 
-      # Rev-pinned mode:
-      html = "<script src=\"[OUTERFACES_ODD_SPA]/main.js\"></script>"
-      transform_html_cdn_tokens(html, conn) #=> "<script src=\"/__rev/abc123/spa/main.js\"></script>"
-
-      # Non-rev mode (no rev in assigns):
+      # Unified proxy mode (cdn_origin = ""):
       html = "<script src=\"[OUTERFACES_ODD_CDN]/lib.js\"></script>"
-      transform_html_cdn_tokens(html, conn) #=> "<script src=\"http://localhost:60032/lib.js\"></script>"
+      transform_html_cdn_tokens(html, conn, "") #=> "<script src=\"/__rev/abc123/cdn/lib.js\"></script>"
+
+      # Direct CDN mode (cdn_origin = "http://localhost:60032"):
+      html = "<script src=\"[OUTERFACES_ODD_CDN]/lib.js\"></script>"
+      transform_html_cdn_tokens(html, conn, "http://localhost:60032") #=> "<script src=\"http://localhost:60032/__rev/abc123/cdn/lib.js\"></script>"
+
+      # SPA tokens (always relative):
+      html = "<script src=\"[OUTERFACES_ODD_SPA]/main.js\"></script>"
+      transform_html_cdn_tokens(html, conn, "") #=> "<script src=\"/__rev/abc123/spa/main.js\"></script>"
 
   """
 
@@ -40,8 +41,10 @@ defmodule Outerfaces.Odd.Plugs.OddCDNRoflHTMLPlug do
   ## Parameters
 
   - `html_content` - The HTML content to transform
-  - `conn` - The Plug.Conn struct (used to determine mode and get configuration)
-  - `cdn_base_url` - (optional) Base URL for CDN in absolute mode (e.g., "http://localhost:8011")
+  - `conn` - The Plug.Conn struct (used to get rev)
+  - `cdn_origin` - Origin for CDN assets:
+    - Unified proxy mode: "" (empty string, emits relative URLs)
+    - Direct CDN mode: "http://localhost:60032" (full origin)
 
   ## Returns
 
@@ -49,44 +52,33 @@ defmodule Outerfaces.Odd.Plugs.OddCDNRoflHTMLPlug do
   - All [OUTERFACES_ODD_CDN] and [OUTERFACES_ODD_SPA] tokens replaced
   - Rev meta tag injected in <head>
   """
-  @spec transform_html_cdn_tokens(String.t(), Plug.Conn.t(), String.t() | nil) :: String.t()
-  def transform_html_cdn_tokens(html_content, conn, cdn_base_url \\ nil) do
-    html_content
-    |> replace_odd_cdn_tokens(conn, cdn_base_url)
-    |> replace_odd_spa_tokens(conn)
-    |> inject_rev_meta_tag(conn)
+  @spec transform_html_cdn_tokens(String.t(), Plug.Conn.t(), String.t()) :: String.t()
+  def transform_html_cdn_tokens(html_content, conn, cdn_origin \\ "") do
+    # Short-circuit if no tokens present (performance optimization)
+    if String.contains?(html_content, "[OUTERFACES_") do
+      html_content
+      |> replace_odd_cdn_tokens(conn, cdn_origin)
+      |> replace_odd_spa_tokens(conn)
+      |> inject_rev_meta_tag(conn)
+    else
+      html_content
+    end
   end
 
   # Private Functions
 
-  @spec replace_odd_cdn_tokens(String.t(), Plug.Conn.t(), String.t() | nil) :: String.t()
-  defp replace_odd_cdn_tokens(html_content, conn, cdn_base_url) do
+  @spec replace_odd_cdn_tokens(String.t(), Plug.Conn.t(), String.t()) :: String.t()
+  defp replace_odd_cdn_tokens(html_content, conn, cdn_origin) do
     rev = get_rev(conn)
 
-    # For CDN tokens, we always need to point to the CDN server
-    # If cdn_base_url is provided (separate CDN port), use absolute URL with rev
-    # Otherwise, use relative rev-pinned URL
-    case cdn_base_url do
-      nil ->
-        # Same origin - use relative rev-pinned URL
-        Regex.replace(@odd_cdn_attr_regex, html_content, fn _match,
-                                                            attr_start,
-                                                            prefix,
-                                                            path,
-                                                            quote ->
-          "#{attr_start}#{prefix}/__rev/#{rev}/cdn/#{path}#{quote}"
-        end)
-
-      base_url ->
-        # Separate CDN port - use absolute URL with rev
-        Regex.replace(@odd_cdn_attr_regex, html_content, fn _match,
-                                                            attr_start,
-                                                            prefix,
-                                                            path,
-                                                            quote ->
-          "#{attr_start}#{prefix}#{base_url}/__rev/#{rev}/cdn/#{path}#{quote}"
-        end)
-    end
+    # Emit canonical rev-pinned URLs: <cdn_origin>/__rev/<rev>/cdn/<path>
+    Regex.replace(@odd_cdn_attr_regex, html_content, fn _match,
+                                                        attr_start,
+                                                        prefix,
+                                                        path,
+                                                        quote ->
+      "#{attr_start}#{prefix}#{cdn_origin}/__rev/#{rev}/cdn/#{path}#{quote}"
+    end)
   end
 
   @spec replace_odd_spa_tokens(String.t(), Plug.Conn.t()) :: String.t()

@@ -19,10 +19,24 @@ defmodule Outerfaces.Odd.Plugs.OddCDNRoflJSPlug do
   @local_cdn_exports_regex ~r/export\s+(?:\{\s*([\s\S]*?)\s*\}|\*(?:\s+as\s+(\w+))?)\s+from\s+['"][^'"]*\[OUTERFACES_LOCAL_CDN\]\/([^'"]*)['"]\s*;?/is
 
   # New regex patterns (support both ODD and LOCAL for backward compatibility)
+  # Named imports: import { foo, bar } from "..."
   @odd_cdn_imports_regex ~r/import\s+\{\s*([\s\S]*?)\s*\}\s+from\s+['"][^'"]*\[OUTERFACES_(?:ODD|LOCAL)_CDN\]\/([^'"]*)['"]\s*;?/is
   @odd_cdn_exports_regex ~r/export\s+(?:\{\s*([\s\S]*?)\s*\}|\*(?:\s+as\s+(\w+))?)\s+from\s+['"][^'"]*\[OUTERFACES_(?:ODD|LOCAL)_CDN\]\/([^'"]*)['"]\s*;?/is
   @odd_spa_imports_regex ~r/import\s+\{\s*([\s\S]*?)\s*\}\s+from\s+['"][^'"]*\[OUTERFACES_ODD_SPA\]\/([^'"]*)['"]\s*;?/is
   @odd_spa_exports_regex ~r/export\s+(?:\{\s*([\s\S]*?)\s*\}|\*(?:\s+as\s+(\w+))?)\s+from\s+['"][^'"]*\[OUTERFACES_ODD_SPA\]\/([^'"]*)['"]\s*;?/is
+
+  # Additional ESM syntax patterns (D2: expanded coverage)
+  # Default imports: import X from "..."
+  @odd_cdn_default_imports_regex ~r/import\s+(\w+)\s+from\s+['"][^'"]*\[OUTERFACES_(?:ODD|LOCAL)_CDN\]\/([^'"]*)['"]\s*;?/i
+  @odd_spa_default_imports_regex ~r/import\s+(\w+)\s+from\s+['"][^'"]*\[OUTERFACES_ODD_SPA\]\/([^'"]*)['"]\s*;?/i
+
+  # Namespace imports: import * as X from "..."
+  @odd_cdn_namespace_imports_regex ~r/import\s+\*\s+as\s+(\w+)\s+from\s+['"][^'"]*\[OUTERFACES_(?:ODD|LOCAL)_CDN\]\/([^'"]*)['"]\s*;?/i
+  @odd_spa_namespace_imports_regex ~r/import\s+\*\s+as\s+(\w+)\s+from\s+['"][^'"]*\[OUTERFACES_ODD_SPA\]\/([^'"]*)['"]\s*;?/i
+
+  # Side-effect imports: import "..."
+  @odd_cdn_side_effect_imports_regex ~r/import\s+['"][^'"]*\[OUTERFACES_(?:ODD|LOCAL)_CDN\]\/([^'"]*)['"]\s*;?/i
+  @odd_spa_side_effect_imports_regex ~r/import\s+['"][^'"]*\[OUTERFACES_ODD_SPA\]\/([^'"]*)['"]\s*;?/i
 
   @spec transform_javascript_cdn_imports_and_exports(
           file_content :: String.t(),
@@ -138,32 +152,53 @@ defmodule Outerfaces.Odd.Plugs.OddCDNRoflJSPlug do
   # NEW: Dual-mode transformation functions
 
   @doc """
-  Transforms JavaScript imports/exports with dual-mode support (rev-pinned or absolute URLs).
+  Transforms JavaScript imports/exports with rev-pinned URLs.
 
-  This function checks conn.assigns.outerfaces_rev to determine the mode:
-  - If rev present: rewrites to rev-pinned URLs (/__rev/<rev>/cdn/...)
-  - Otherwise: rewrites to absolute URLs using provided cdn_base_url
+  This function always emits rev-pinned URLs in the canonical format:
+  - CDN: `<cdn_origin>/__rev/<rev>/cdn/<path>`
+  - SPA: `/__rev/<rev>/spa/<path>`
 
   ## Parameters
 
   - `file_content` - JavaScript file content
-  - `conn` - Plug.Conn struct (used to check for rev)
-  - `cdn_base_url` - Base URL for absolute mode (e.g., "http://localhost:60032")
+  - `conn` - Plug.Conn struct (used to get rev)
+  - `cdn_origin` - Origin for CDN assets:
+    - Unified proxy mode: "" (empty string, emits relative URLs)
+    - Direct CDN mode: "http://localhost:60032" (full origin)
 
   ## Returns
 
   Transformed JavaScript content with all tokens replaced
+
+  ## Examples
+
+      # Unified proxy mode (cdn_origin = "")
+      transform_javascript_with_conn(content, conn, "")
+      # Emits: /__rev/abc123/cdn/foo.js
+
+      # Direct CDN mode (cdn_origin = "http://localhost:60032")
+      transform_javascript_with_conn(content, conn, "http://localhost:60032")
+      # Emits: http://localhost:60032/__rev/abc123/cdn/foo.js
   """
   @spec transform_javascript_with_conn(String.t(), Plug.Conn.t(), String.t()) :: String.t()
-  def transform_javascript_with_conn(file_content, conn, cdn_base_url) do
-    content = normalize_newlines(file_content)
+  def transform_javascript_with_conn(file_content, conn, cdn_origin) do
+    # Short-circuit if no tokens present (performance optimization)
+    if String.contains?(file_content, "[OUTERFACES_") or
+         String.contains?(file_content, "__OUTERFACES_REV__") do
+      content = normalize_newlines(file_content)
 
-    content
-    |> replace_rev_token(conn)
-    |> replace_odd_cdn_imports_with_conn(conn, cdn_base_url)
-    |> replace_odd_cdn_exports_with_conn(conn, cdn_base_url)
-    |> replace_odd_spa_imports_with_conn(conn)
-    |> replace_odd_spa_exports_with_conn(conn)
+      content
+      |> replace_rev_token(conn)
+      |> replace_odd_cdn_imports_with_conn(conn, cdn_origin)
+      |> replace_odd_cdn_exports_with_conn(conn, cdn_origin)
+      |> replace_odd_spa_imports_with_conn(conn)
+      |> replace_odd_spa_exports_with_conn(conn)
+      |> replace_default_imports_with_conn(conn, cdn_origin)
+      |> replace_namespace_imports_with_conn(conn, cdn_origin)
+      |> replace_side_effect_imports_with_conn(conn, cdn_origin)
+    else
+      file_content
+    end
   end
 
   # Replace __OUTERFACES_REV__ with the actual rev value (useful for service workers)
@@ -175,25 +210,25 @@ defmodule Outerfaces.Odd.Plugs.OddCDNRoflJSPlug do
   end
 
   @spec replace_odd_cdn_imports_with_conn(String.t(), Plug.Conn.t(), String.t()) :: String.t()
-  defp replace_odd_cdn_imports_with_conn(file_body, conn, cdn_base_url) do
+  defp replace_odd_cdn_imports_with_conn(file_body, conn, cdn_origin) do
     rev = get_rev(conn)
 
-    # CDN imports always go to cdn_base_url with rev prefix
+    # Emit canonical rev-pinned URLs: <cdn_origin>/__rev/<rev>/cdn/<path>
     Regex.replace(@odd_cdn_imports_regex, file_body, fn _match, imports, path ->
-      "import {#{imports}} from '#{cdn_base_url}/__rev/#{rev}/cdn/#{path}'"
+      "import {#{imports}} from '#{cdn_origin}/__rev/#{rev}/cdn/#{path}'"
     end)
   end
 
   @spec replace_odd_cdn_exports_with_conn(String.t(), Plug.Conn.t(), String.t()) :: String.t()
-  defp replace_odd_cdn_exports_with_conn(file_body, conn, cdn_base_url) do
+  defp replace_odd_cdn_exports_with_conn(file_body, conn, cdn_origin) do
     rev = get_rev(conn)
 
-    # CDN exports always go to cdn_base_url with rev prefix
+    # Emit canonical rev-pinned URLs: <cdn_origin>/__rev/<rev>/cdn/<path>
     Regex.replace(@odd_cdn_exports_regex, file_body, fn _match, g1, g2, g3 ->
       cond do
-        g1 != "" -> "export {#{g1}} from '#{cdn_base_url}/__rev/#{rev}/cdn/#{g3}'"
-        g2 != "" -> "export * as #{g2} from '#{cdn_base_url}/__rev/#{rev}/cdn/#{g3}'"
-        true -> "export * from '#{cdn_base_url}/__rev/#{rev}/cdn/#{g3}'"
+        g1 != "" -> "export {#{g1}} from '#{cdn_origin}/__rev/#{rev}/cdn/#{g3}'"
+        g2 != "" -> "export * as #{g2} from '#{cdn_origin}/__rev/#{rev}/cdn/#{g3}'"
+        true -> "export * from '#{cdn_origin}/__rev/#{rev}/cdn/#{g3}'"
       end
     end)
   end
@@ -217,6 +252,59 @@ defmodule Outerfaces.Odd.Plugs.OddCDNRoflJSPlug do
         g2 != "" -> "export * as #{g2} from '/__rev/#{rev}/spa/#{g3}'"
         true -> "export * from '/__rev/#{rev}/spa/#{g3}'"
       end
+    end)
+  end
+
+  # D2: Additional ESM syntax support helpers
+
+  @spec replace_default_imports_with_conn(String.t(), Plug.Conn.t(), String.t()) :: String.t()
+  defp replace_default_imports_with_conn(file_body, conn, cdn_origin) do
+    rev = get_rev(conn)
+
+    file_body
+    |> then(fn content ->
+      Regex.replace(@odd_cdn_default_imports_regex, content, fn _match, import_name, path ->
+        "import #{import_name} from '#{cdn_origin}/__rev/#{rev}/cdn/#{path}'"
+      end)
+    end)
+    |> then(fn content ->
+      Regex.replace(@odd_spa_default_imports_regex, content, fn _match, import_name, path ->
+        "import #{import_name} from '/__rev/#{rev}/spa/#{path}'"
+      end)
+    end)
+  end
+
+  @spec replace_namespace_imports_with_conn(String.t(), Plug.Conn.t(), String.t()) :: String.t()
+  defp replace_namespace_imports_with_conn(file_body, conn, cdn_origin) do
+    rev = get_rev(conn)
+
+    file_body
+    |> then(fn content ->
+      Regex.replace(@odd_cdn_namespace_imports_regex, content, fn _match, namespace_name, path ->
+        "import * as #{namespace_name} from '#{cdn_origin}/__rev/#{rev}/cdn/#{path}'"
+      end)
+    end)
+    |> then(fn content ->
+      Regex.replace(@odd_spa_namespace_imports_regex, content, fn _match, namespace_name, path ->
+        "import * as #{namespace_name} from '/__rev/#{rev}/spa/#{path}'"
+      end)
+    end)
+  end
+
+  @spec replace_side_effect_imports_with_conn(String.t(), Plug.Conn.t(), String.t()) :: String.t()
+  defp replace_side_effect_imports_with_conn(file_body, conn, cdn_origin) do
+    rev = get_rev(conn)
+
+    file_body
+    |> then(fn content ->
+      Regex.replace(@odd_cdn_side_effect_imports_regex, content, fn _match, path ->
+        "import '#{cdn_origin}/__rev/#{rev}/cdn/#{path}'"
+      end)
+    end)
+    |> then(fn content ->
+      Regex.replace(@odd_spa_side_effect_imports_regex, content, fn _match, path ->
+        "import '/__rev/#{rev}/spa/#{path}'"
+      end)
     end)
   end
 

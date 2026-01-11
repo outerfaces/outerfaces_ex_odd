@@ -76,38 +76,54 @@ defmodule Outerfaces.Odd.Plugs.OddCDNRoflCSSPlug do
     )
   end
 
-  # NEW: Dual-mode transformation function
+  # NEW: Rev-pinned transformation function
 
   @doc """
-  Transforms CSS @import statements with dual-mode support (rev-pinned or absolute URLs).
+  Transforms CSS @import statements with rev-pinned URLs.
 
-  This function checks conn.assigns.outerfaces_rev to determine the mode:
-  - If rev present: rewrites to rev-pinned URLs (/__rev/<rev>/cdn/...)
-  - Otherwise: rewrites to absolute URLs using provided cdn_base_url
+  This function always emits rev-pinned URLs in the canonical format:
+  - CDN: `<cdn_origin>/__rev/<rev>/cdn/<path>`
 
   ## Parameters
 
   - `file_content` - CSS file content
-  - `conn` - Plug.Conn struct (used to check for rev)
-  - `cdn_base_url` - Base URL for absolute mode (e.g., "http://localhost:60032")
+  - `conn` - Plug.Conn struct (used to get rev)
+  - `cdn_origin` - Origin for CDN assets:
+    - Unified proxy mode: "" (empty string, emits relative URLs)
+    - Direct CDN mode: "http://localhost:60032" (full origin)
 
   ## Returns
 
   Transformed CSS content with all tokens replaced
+
+  ## Examples
+
+      # Unified proxy mode (cdn_origin = "")
+      transform_css_with_conn(content, conn, "")
+      # Emits: /__rev/abc123/cdn/foo.css
+
+      # Direct CDN mode (cdn_origin = "http://localhost:60032")
+      transform_css_with_conn(content, conn, "http://localhost:60032")
+      # Emits: http://localhost:60032/__rev/abc123/cdn/foo.css
   """
   @spec transform_css_with_conn(String.t(), Plug.Conn.t(), String.t()) :: String.t()
-  def transform_css_with_conn(file_content, conn, cdn_base_url) do
-    content = normalize_newlines(file_content)
-    replace_odd_cdn_imports_with_conn(content, conn, cdn_base_url)
+  def transform_css_with_conn(file_content, conn, cdn_origin) do
+    # Short-circuit if no tokens present (performance optimization)
+    if String.contains?(file_content, "[OUTERFACES_") do
+      content = normalize_newlines(file_content)
+      replace_odd_cdn_imports_with_conn(content, conn, cdn_origin)
+    else
+      file_content
+    end
   end
 
   @spec replace_odd_cdn_imports_with_conn(String.t(), Plug.Conn.t(), String.t()) :: String.t()
-  defp replace_odd_cdn_imports_with_conn(file_body, conn, cdn_base_url) do
+  defp replace_odd_cdn_imports_with_conn(file_body, conn, cdn_origin) do
     rev = get_rev(conn)
 
-    # CDN imports always go to cdn_base_url with rev prefix
+    # Emit canonical rev-pinned URLs: <cdn_origin>/__rev/<rev>/cdn/<path>
     Regex.replace(@odd_cdn_imports_regex, file_body, fn _match, prefix, path ->
-      "@import '#{prefix}#{cdn_base_url}/__rev/#{rev}/cdn/#{path}'"
+      "@import '#{prefix}#{cdn_origin}/__rev/#{rev}/cdn/#{path}'"
     end)
   end
 

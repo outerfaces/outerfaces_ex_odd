@@ -48,20 +48,30 @@ defmodule Outerfaces.Odd.Plugs.OddCDNConsumerServeIndex do
       conn
       |> put_resp_content_type(mime_type)
       |> then(fn conn ->
-        # Determine if file needs transformation
-        is_javascript = MIME.from_path(conn.request_path) |> String.contains?("javascript")
-        is_css = MIME.from_path(conn.request_path) |> String.contains?("css")
-        is_html = MIME.from_path(conn.request_path) |> String.contains?("html")
+        # Determine if file needs transformation using already-computed mime_type
+        is_javascript = String.contains?(mime_type, "javascript")
+        is_css = String.contains?(mime_type, "css")
+        is_html = String.contains?(mime_type, "html")
 
-        is_rofl_js_file = String.contains?(conn.request_path, ".rofl.js")
-        is_rofl_css_file = String.contains?(conn.request_path, ".rofl.css")
-        is_rofl_html_file = String.contains?(conn.request_path, ".rofl.html")
+        is_rofl_js_file = String.contains?(full_path, ".rofl.js")
+        is_rofl_css_file = String.contains?(full_path, ".rofl.css")
+        is_rofl_html_file = String.contains?(full_path, ".rofl.html")
 
-        # Build CDN base URL for non-rev mode transformations
-        protocol = if conn.scheme == :https, do: "https", else: "http"
-        cdn_host_name = conn.host || "localhost"
-        cdn_port = Map.get(conn.assigns, :cdn_port, 60032)
-        cdn_base_url = "#{protocol}://#{cdn_host_name}:#{cdn_port}"
+        # Build CDN origin for rev-pinned transformations
+        # For unified proxy mode (CDN and UI on same port): use empty string
+        # For direct CDN mode (separate CDN port): use full origin
+        cdn_origin =
+          case Map.get(conn.assigns, :cdn_port) do
+            # If cdn_port assign exists and differs from UI port, use full origin
+            cdn_port when is_integer(cdn_port) and cdn_port != conn.port ->
+              protocol = if conn.scheme == :https, do: "https", else: "http"
+              cdn_host = conn.host || "localhost"
+              "#{protocol}://#{cdn_host}:#{cdn_port}"
+
+            # Otherwise (unified mode or no separate CDN), use empty string for relative URLs
+            _ ->
+              ""
+          end
 
         cond do
           is_javascript and is_rofl_js_file ->
@@ -71,7 +81,7 @@ defmodule Outerfaces.Odd.Plugs.OddCDNConsumerServeIndex do
                    ModifyCDNJSFiles.transform_javascript_with_conn(
                      content,
                      conn,
-                     cdn_base_url
+                     cdn_origin
                    ) do
               conn
               |> send_resp(200, modified_file)
@@ -88,7 +98,7 @@ defmodule Outerfaces.Odd.Plugs.OddCDNConsumerServeIndex do
                    ModifyCDNCSSFiles.transform_css_with_conn(
                      content,
                      conn,
-                     cdn_base_url
+                     cdn_origin
                    ) do
               conn
               |> send_resp(200, modified_file)
@@ -105,7 +115,7 @@ defmodule Outerfaces.Odd.Plugs.OddCDNConsumerServeIndex do
                    ModifyCDNHTMLFiles.transform_html_cdn_tokens(
                      content,
                      conn,
-                     cdn_base_url
+                     cdn_origin
                    ) do
               conn
               |> send_resp(200, modified_file)
@@ -129,11 +139,21 @@ defmodule Outerfaces.Odd.Plugs.OddCDNConsumerServeIndex do
   end
 
   defp serve_index_html(conn, index_path) do
-    # Build CDN base URL for non-rev mode transformations
-    protocol = if conn.scheme == :https, do: "https", else: "http"
-    cdn_host_name = conn.host || "localhost"
-    cdn_port = Map.get(conn.assigns, :cdn_port, 60032)
-    cdn_base_url = "#{protocol}://#{cdn_host_name}:#{cdn_port}"
+    # Build CDN origin for rev-pinned transformations
+    # For unified proxy mode (CDN and UI on same port): use empty string
+    # For direct CDN mode (separate CDN port): use full origin
+    cdn_origin =
+      case Map.get(conn.assigns, :cdn_port) do
+        # If cdn_port assign exists and differs from UI port, use full origin
+        cdn_port when is_integer(cdn_port) and cdn_port != conn.port ->
+          protocol = if conn.scheme == :https, do: "https", else: "http"
+          cdn_host = conn.host || "localhost"
+          "#{protocol}://#{cdn_host}:#{cdn_port}"
+
+        # Otherwise (unified mode or no separate CDN), use empty string for relative URLs
+        _ ->
+          ""
+      end
 
     cond do
       File.exists?(index_path) ->
@@ -144,9 +164,10 @@ defmodule Outerfaces.Odd.Plugs.OddCDNConsumerServeIndex do
                  ModifyCDNHTMLFiles.transform_html_cdn_tokens(
                    content,
                    conn,
-                   cdn_base_url
+                   cdn_origin
                  ) do
             conn
+            |> assign(:outerfaces_served_index, true)
             |> put_resp_content_type("text/html")
             |> send_resp(200, modified_file)
             |> halt()
@@ -158,6 +179,7 @@ defmodule Outerfaces.Odd.Plugs.OddCDNConsumerServeIndex do
         else
           # Regular .html file, serve as-is
           conn
+          |> assign(:outerfaces_served_index, true)
           |> put_resp_content_type("text/html")
           |> send_file(200, index_path)
           |> halt()
@@ -175,17 +197,44 @@ defmodule Outerfaces.Odd.Plugs.OddCDNConsumerServeIndex do
 
   defp default_static_patterns do
     [
+      # Directory patterns
       ~r{^/assets/},
       ~r{^/js/},
       ~r{^/css/},
       ~r{^/images/},
+      ~r{^/fonts/},
+      # JavaScript
       ~r{\.js$},
+      ~r{\.mjs$},
+      # CSS
       ~r{\.css$},
+      # Images
       ~r{\.png$},
       ~r{\.jpg$},
+      ~r{\.jpeg$},
+      ~r{\.gif$},
       ~r{\.svg$},
+      ~r{\.webp$},
+      ~r{\.ico$},
+      # Fonts
+      ~r{\.woff$},
+      ~r{\.woff2$},
+      ~r{\.ttf$},
+      ~r{\.otf$},
+      ~r{\.eot$},
+      # WebAssembly
+      ~r{\.wasm$},
+      # Source maps
+      ~r{\.map$},
+      # Data formats
       ~r{\.json$},
-      ~r{\.txt$}
+      ~r{\.xml$},
+      ~r{\.txt$},
+      # Audio/Video (if serving media assets)
+      ~r{\.mp3$},
+      ~r{\.mp4$},
+      ~r{\.wav$},
+      ~r{\.webm$}
     ]
   end
 end
