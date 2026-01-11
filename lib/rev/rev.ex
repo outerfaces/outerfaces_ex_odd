@@ -34,14 +34,55 @@ defmodule Outerfaces.Rev do
   end
 
   @doc """
+  Sets the revision to a specific value and caches it.
+
+  This is useful when you want to manually update to a specific rev without
+  relying on environment variables, git, or config.
+
+  ## Examples
+
+      iex> Outerfaces.Rev.set_rev("new-rev-123")
+      :ok
+      iex> Outerfaces.Rev.current_rev()
+      "new-rev-123"
+
+  """
+  @spec set_rev(String.t()) :: :ok
+  def set_rev(new_rev) when is_binary(new_rev) do
+    :persistent_term.put(@rev_cache_key, new_rev)
+    :ok
+  end
+
+  @doc """
   Invalidates the cached rev value, forcing a fresh fetch on next `current_rev/0` call.
 
-  This is primarily useful for testing or when you need to update the rev at runtime.
+  This is primarily useful for testing or when you need to update the rev at runtime
+  by re-detecting from environment/git/config sources.
+
+  If you want to set a specific rev value, use `set_rev/1` instead.
   """
   @spec invalidate_cache() :: :ok
   def invalidate_cache do
     :persistent_term.erase(@rev_cache_key)
     :ok
+  end
+
+  @doc """
+  Rechecks and returns the current rev by invalidating the cache and fetching fresh.
+
+  This is a convenience method that combines `invalidate_cache/0` and `current_rev/0`
+  to force a re-detection from environment/git/config sources in a single call.
+
+  ## Examples
+
+      iex> Outerfaces.Rev.recheck()
+      "abc123def456"  # Freshly fetched from OUTERFACES_REV, git, config, or timestamp
+
+  """
+  @spec recheck() :: String.t()
+  def recheck do
+    invalidate_cache()
+    current_rev()
   end
 
   # Private Functions
