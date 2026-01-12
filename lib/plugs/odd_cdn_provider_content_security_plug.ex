@@ -6,19 +6,15 @@ defmodule Outerfaces.Odd.Plugs.OddCDNProviderContentSecurityPlug do
   import Plug.Conn
   alias Plug.Conn
 
-  # upgrade-insecure-requests"
-  @hardcoded_csp "base-uri 'self'; block-all-mixed-content; default-src 'self';" <>
-                   " form-action 'self'; frame-ancestors 'none'; img-src 'self';" <>
-                   " object-src 'none'; script-src 'self';" <>
-                   " style-src 'self' 'unsafe-inline';"
-
   @spec init(Keyword.t()) :: Keyword.t()
   def init(opts \\ []), do: opts
 
   @spec call(Conn.t(), Keyword.t()) :: Conn.t()
   def call(%Conn{} = conn, opts) do
+    origin_application_sources = Keyword.get(opts, :origin_applications, [])
+
     origin_applications =
-      Keyword.get(opts, :origin_applications, [])
+      origin_application_sources
       |> Enum.flat_map(&build_origin_list_for_application/1)
 
     conn
@@ -34,8 +30,19 @@ defmodule Outerfaces.Odd.Plugs.OddCDNProviderContentSecurityPlug do
           conn
         end
 
+      use_self_policy = Keyword.get(opts, :use_self_policy, false)
+
+      source_host_options = Keyword.get(opts, :source_host_options, origin_application_sources)
+
+      csp =
+        if use_self_policy do
+          build_self_content_security_policy()
+        else
+          build_content_security_policy(source_host_options)
+        end
+
       conn
-      |> put_resp_header("content-security-policy", @hardcoded_csp)
+      |> put_resp_header("content-security-policy", csp)
       |> put_resp_header("x-content-type-options", "nosniff")
       |> put_resp_header("x-frame-options", "deny")
       |> put_resp_header(
@@ -73,6 +80,38 @@ defmodule Outerfaces.Odd.Plugs.OddCDNProviderContentSecurityPlug do
     :crypto.strong_rand_bytes(16)
     |> Base.encode64()
     |> binary_part(0, 16)
+  end
+
+  @spec build_self_content_security_policy() :: String.t()
+  defp build_self_content_security_policy do
+    "base-uri 'self'; block-all-mixed-content;" <>
+      " default-src 'self';" <>
+      " form-action 'self'; frame-ancestors 'none';" <>
+      " img-src 'self' data:;" <>
+      " object-src 'none'; script-src 'self';" <>
+      " style-src 'self' 'unsafe-inline';"
+  end
+
+  @spec build_content_security_policy(
+          allowed_sources :: [%{protocol: String.t(), host: String.t(), port: non_neg_integer()}]
+        ) :: String.t()
+  defp build_content_security_policy(allowed_sources) do
+    http_sources_formatted =
+      allowed_sources
+      |> Enum.map(&build_url/1)
+      |> Enum.join(" ")
+
+    "base-uri 'self'; block-all-mixed-content;" <>
+      " default-src 'self' #{http_sources_formatted};" <>
+      " form-action 'self'; frame-ancestors 'none';" <>
+      " img-src 'self' data: #{http_sources_formatted};" <>
+      " object-src 'none'; script-src 'self' #{http_sources_formatted};" <>
+      " style-src 'self' 'unsafe-inline' #{http_sources_formatted};"
+  end
+
+  @spec build_url(map()) :: String.t()
+  defp build_url(%{protocol: protocol, host: host, port: port}) do
+    "#{protocol}://#{host}:#{port}"
   end
 
   @spec build_origin_list_for_application(%{

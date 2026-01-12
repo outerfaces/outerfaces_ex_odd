@@ -103,7 +103,8 @@ defmodule Outerfaces.Odd.Endpoints.DynamicLoader do
           plug(Plug.Logger, log: :debug)
 
           plug(OddCDNProviderContentSecurityPlug,
-            origin_applications: origin_applications
+            origin_applications: origin_applications,
+            source_host_options: origin_applications
           )
 
           plug(DefaultServeIndex,
