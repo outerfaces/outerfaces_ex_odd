@@ -72,11 +72,7 @@ defmodule Outerfaces.Odd.Plugs.OddCDNRoflHTMLPlug do
     rev = get_rev(conn)
 
     # Emit canonical rev-pinned URLs: <cdn_origin>/__rev/<rev>/cdn/<path>
-    Regex.replace(@odd_cdn_attr_regex, html_content, fn _match,
-                                                        attr_start,
-                                                        prefix,
-                                                        path,
-                                                        quote ->
+    Regex.replace(@odd_cdn_attr_regex, html_content, fn _match, attr_start, prefix, path, quote ->
       "#{attr_start}#{prefix}#{cdn_origin}/__rev/#{rev}/cdn/#{path}#{quote}"
     end)
   end

@@ -13,6 +13,7 @@ defmodule Outerfaces.Odd.Endpoints.DynamicLoader do
   alias Outerfaces.Odd.Plugs.OddEnvironmentPlug
   alias Outerfaces.Odd.Plugs.OddRevProxyPlug
   alias Outerfaces.Odd.Plugs.OddRevCacheHeadersPlug
+  alias Outerfaces.Odd.Plugs.OddRevEndpointPlug
   alias Outerfaces.Plugs.ServeIndex.DefaultServeIndex
 
   require Logger
@@ -178,6 +179,9 @@ defmodule Outerfaces.Odd.Endpoints.DynamicLoader do
           # NEW: Rev plugs (MUST be first for rev URL parsing)
           plug(OddRevProxyPlug, mismatch_behavior: :redirect)
           plug(OddRevCacheHeadersPlug)
+
+          # Rev endpoint for service worker rev checks
+          plug(OddRevEndpointPlug)
 
           plug(OddCDNConsumerContentSecurityPlug,
             source_host_options: allowed_sources
