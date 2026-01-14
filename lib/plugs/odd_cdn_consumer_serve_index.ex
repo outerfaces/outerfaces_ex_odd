@@ -17,6 +17,7 @@ defmodule Outerfaces.Odd.Plugs.OddCDNConsumerServeIndex do
     static_root = Keyword.get(opts, :static_root, "priv/static")
     root = Path.expand(static_root)
     index_path = Keyword.get(opts, :index_path, Path.join(root, "index.html")) |> Path.expand()
+
     %{
       index_path: index_path,
       static_root: root,
@@ -42,12 +43,12 @@ defmodule Outerfaces.Odd.Plugs.OddCDNConsumerServeIndex do
   end
 
   defp serve_static_asset(conn, root, request_path) do
-                with false <- String.contains?(request_path, <<0>>),
-                  rel <- String.trim_leading(request_path, "/"),
-                  false <- String.contains?(rel, ["\\", ":"]),
-                  candidate <- Path.expand(rel, root),
-                  true <- candidate == root or String.starts_with?(candidate, root <> "/"),
-                  true <- File.regular?(candidate) do
+    with false <- String.contains?(request_path, <<0>>),
+         rel <- String.trim_leading(request_path, "/"),
+         false <- String.contains?(rel, ["\\", ":"]),
+         candidate <- Path.expand(rel, root),
+         true <- candidate == root or String.starts_with?(candidate, root <> "/"),
+         true <- File.regular?(candidate) do
       mime_type = MIME.from_path(candidate) || "application/octet-stream"
       is_javascript = String.contains?(mime_type, "javascript")
       is_css = String.contains?(mime_type, "css")
@@ -63,6 +64,7 @@ defmodule Outerfaces.Odd.Plugs.OddCDNConsumerServeIndex do
             protocol = if conn.scheme == :https, do: "https", else: "http"
             cdn_host = conn.host || "localhost"
             "#{protocol}://#{cdn_host}:#{cdn_port}"
+
           _ ->
             ""
         end
@@ -135,6 +137,7 @@ defmodule Outerfaces.Odd.Plugs.OddCDNConsumerServeIndex do
           protocol = if conn.scheme == :https, do: "https", else: "http"
           cdn_host = conn.host || "localhost"
           "#{protocol}://#{cdn_host}:#{cdn_port}"
+
         _ ->
           ""
       end
