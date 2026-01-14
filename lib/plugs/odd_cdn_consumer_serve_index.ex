@@ -14,9 +14,12 @@ defmodule Outerfaces.Odd.Plugs.OddCDNConsumerServeIndex do
 
   @impl true
   def init(opts) do
+    static_root = Keyword.get(opts, :static_root, "priv/static")
+    root = Path.expand(static_root)
+    index_path = Keyword.get(opts, :index_path, Path.join(root, "index.html")) |> Path.expand()
     %{
-      index_path: Keyword.get(opts, :index_path, "priv/static/index.html"),
-      static_root: Keyword.get(opts, :static_root, "priv/static"),
+      index_path: index_path,
+      static_root: root,
       static_patterns: Keyword.get(opts, :static_patterns, default_static_patterns())
     }
   end
@@ -38,128 +41,67 @@ defmodule Outerfaces.Odd.Plugs.OddCDNConsumerServeIndex do
     end
   end
 
-  defp serve_static_asset(conn, static_root, request_path) do
-    relative_request_path = String.trim_leading(request_path, "/")
-    full_path = Path.expand(Path.join(static_root, relative_request_path))
+  defp serve_static_asset(conn, root, request_path) do
+                with false <- String.contains?(request_path, <<0>>),
+                  rel <- String.trim_leading(request_path, "/"),
+                  false <- String.contains?(rel, ["\\", ":"]),
+                  candidate <- Path.expand(rel, root),
+                  true <- candidate == root or String.starts_with?(candidate, root <> "/"),
+                  true <- File.regular?(candidate) do
+      mime_type = MIME.from_path(candidate) || "application/octet-stream"
+      is_javascript = String.contains?(mime_type, "javascript")
+      is_css = String.contains?(mime_type, "css")
+      is_html = String.contains?(mime_type, "html")
 
-    if File.exists?(full_path) and not File.dir?(full_path) do
-      mime_type = MIME.from_path(full_path) || "application/octet-stream"
+      is_rofl_js_file = String.contains?(candidate, ".rofl.js")
+      is_rofl_css_file = String.contains?(candidate, ".rofl.css")
+      is_rofl_html_file = String.contains?(candidate, ".rofl.html")
 
-      conn
-      |> put_resp_content_type(mime_type)
-      |> then(fn conn ->
-        # Determine if file needs transformation using already-computed mime_type
-        is_javascript = String.contains?(mime_type, "javascript")
-        is_css = String.contains?(mime_type, "css")
-        is_html = String.contains?(mime_type, "html")
+      cdn_origin =
+        case Map.get(conn.assigns, :cdn_port) do
+          cdn_port when is_integer(cdn_port) and cdn_port != conn.port ->
+            protocol = if conn.scheme == :https, do: "https", else: "http"
+            cdn_host = conn.host || "localhost"
+            "#{protocol}://#{cdn_host}:#{cdn_port}"
+          _ ->
+            ""
+        end
 
-        is_rofl_js_file = String.contains?(full_path, ".rofl.js")
-        is_rofl_css_file = String.contains?(full_path, ".rofl.css")
-        is_rofl_html_file = String.contains?(full_path, ".rofl.html")
-
-        # Build CDN origin for rev-pinned transformations
-        # For unified proxy mode (CDN and UI on same port): use empty string
-        # For direct CDN mode (separate CDN port): use full origin
-        cdn_origin =
-          case Map.get(conn.assigns, :cdn_port) do
-            # If cdn_port assign exists and differs from UI port, use full origin
-            cdn_port when is_integer(cdn_port) and cdn_port != conn.port ->
-              protocol = if conn.scheme == :https, do: "https", else: "http"
-              cdn_host = conn.host || "localhost"
-              "#{protocol}://#{cdn_host}:#{cdn_port}"
-
-            # Otherwise (unified mode or no separate CDN), use empty string for relative URLs
+      cond do
+        is_javascript and is_rofl_js_file ->
+          with {:ok, content} <- File.read(candidate),
+               modified_file <-
+                 ModifyCDNJSFiles.transform_javascript_with_conn(
+                   content,
+                   conn,
+                   cdn_origin
+                 ) do
+            conn
+            |> send_resp(200, modified_file)
+          else
             _ ->
-              ""
+              conn
+              |> send_file(200, candidate)
           end
 
-        cond do
-          is_javascript and is_rofl_js_file ->
-            # Transform .rofl.js files using new conn-aware function
-            with {:ok, content} <- File.read(full_path),
-                 modified_file <-
-                   ModifyCDNJSFiles.transform_javascript_with_conn(
-                     content,
-                     conn,
-                     cdn_origin
-                   ) do
-              conn
-              |> send_resp(200, modified_file)
-            else
-              _ ->
-                conn
-                |> send_file(200, full_path)
-            end
-
-          is_css and is_rofl_css_file ->
-            # Transform .rofl.css files using new conn-aware function
-            with {:ok, content} <- File.read(full_path),
-                 modified_file <-
-                   ModifyCDNCSSFiles.transform_css_with_conn(
-                     content,
-                     conn,
-                     cdn_origin
-                   ) do
-              conn
-              |> send_resp(200, modified_file)
-            else
-              _ ->
-                conn
-                |> send_file(200, full_path)
-            end
-
-          is_html and is_rofl_html_file ->
-            # Transform .rofl.html files using HTML transformation
-            with {:ok, content} <- File.read(full_path),
-                 modified_file <-
-                   ModifyCDNHTMLFiles.transform_html_cdn_tokens(
-                     content,
-                     conn,
-                     cdn_origin
-                   ) do
-              conn
-              |> send_resp(200, modified_file)
-            else
-              _ ->
-                conn
-                |> send_file(200, full_path)
-            end
-
-          true ->
-            # No transformation needed
+        is_css and is_rofl_css_file ->
+          with {:ok, content} <- File.read(candidate),
+               modified_file <-
+                 ModifyCDNCSSFiles.transform_css_with_conn(
+                   content,
+                   conn,
+                   cdn_origin
+                 ) do
             conn
-            |> send_file(200, full_path)
-        end
-      end)
-      |> halt()
-    else
-      send_resp(conn, 404, "File not found")
-      |> halt()
-    end
-  end
+            |> send_resp(200, modified_file)
+          else
+            _ ->
+              conn
+              |> send_file(200, candidate)
+          end
 
-  defp serve_index_html(conn, index_path) do
-    # Build CDN origin for rev-pinned transformations
-    # For unified proxy mode (CDN and UI on same port): use empty string
-    # For direct CDN mode (separate CDN port): use full origin
-    cdn_origin =
-      case Map.get(conn.assigns, :cdn_port) do
-        # If cdn_port assign exists and differs from UI port, use full origin
-        cdn_port when is_integer(cdn_port) and cdn_port != conn.port ->
-          protocol = if conn.scheme == :https, do: "https", else: "http"
-          cdn_host = conn.host || "localhost"
-          "#{protocol}://#{cdn_host}:#{cdn_port}"
-
-        # Otherwise (unified mode or no separate CDN), use empty string for relative URLs
-        _ ->
-          ""
-      end
-
-    cond do
-      File.exists?(index_path) ->
-        # Check if this is a .rofl.html file that needs transformation
-        if String.ends_with?(index_path, ".rofl.html") do
-          with {:ok, content} <- File.read(index_path),
+        is_html and is_rofl_html_file ->
+          with {:ok, content} <- File.read(candidate),
                modified_file <-
                  ModifyCDNHTMLFiles.transform_html_cdn_tokens(
                    content,
@@ -167,27 +109,60 @@ defmodule Outerfaces.Odd.Plugs.OddCDNConsumerServeIndex do
                    cdn_origin
                  ) do
             conn
-            |> assign(:outerfaces_served_index, true)
-            |> put_resp_content_type("text/html")
             |> send_resp(200, modified_file)
-            |> halt()
           else
             _ ->
-              send_resp(conn, 500, "Failed to transform index.rofl.html")
-              |> halt()
+              conn
+              |> send_file(200, candidate)
           end
-        else
-          # Regular .html file, serve as-is
-          conn
-          |> assign(:outerfaces_served_index, true)
-          |> put_resp_content_type("text/html")
-          |> send_file(200, index_path)
-          |> halt()
-        end
 
-      true ->
-        send_resp(conn, 404, "index.html not found")
+        true ->
+          conn
+          |> send_file(200, candidate)
+      end
+      |> halt()
+    else
+      _ ->
+        send_resp(conn, 404, "File not found")
         |> halt()
+    end
+  end
+
+  defp serve_index_html(conn, index_path) do
+    cdn_origin =
+      case Map.get(conn.assigns, :cdn_port) do
+        cdn_port when is_integer(cdn_port) and cdn_port != conn.port ->
+          protocol = if conn.scheme == :https, do: "https", else: "http"
+          cdn_host = conn.host || "localhost"
+          "#{protocol}://#{cdn_host}:#{cdn_port}"
+        _ ->
+          ""
+      end
+
+    if String.ends_with?(index_path, ".rofl.html") do
+      with {:ok, content} <- File.read(index_path),
+           modified_file <-
+             ModifyCDNHTMLFiles.transform_html_cdn_tokens(
+               content,
+               conn,
+               cdn_origin
+             ) do
+        conn
+        |> assign(:outerfaces_served_index, true)
+        |> put_resp_content_type("text/html")
+        |> send_resp(200, modified_file)
+        |> halt()
+      else
+        _ ->
+          send_resp(conn, 500, "Failed to transform index.rofl.html")
+          |> halt()
+      end
+    else
+      conn
+      |> assign(:outerfaces_served_index, true)
+      |> put_resp_content_type("text/html")
+      |> send_file(200, index_path)
+      |> halt()
     end
   end
 
