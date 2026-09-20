@@ -6,12 +6,13 @@ defmodule OuterfacesOdd.MixProject do
   def project do
     [
       app: :outerfaces_odd,
-      version: "0.2.4",
+      version: "0.2.5",
       elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       aliases: aliases(),
-      description: "Outerfaces ODD (Outerfaces Dependency Distribution) -- Extensions for Outerfaces framework",
+      description:
+        "Outerfaces ODD (Outerfaces Dependency Distribution) -- Extensions for Outerfaces framework",
       name: "Outerfaces Dependency Distribution (ODD)",
       source_url: @github_url,
       package: package(),

@@ -10,7 +10,7 @@ by adding `outerfaces_odd` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:outerfaces_odd, "~> 0.1.0"}
+    {:outerfaces_odd, "~> 0.2.5"}
   ]
 end
 ```
