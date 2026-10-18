@@ -3,7 +3,9 @@ defmodule Outerfaces.Odd.Plugs.OddRevCacheHeadersPlug do
   Plug for setting cache headers based on rev-pinned URL matching.
 
   This plug sets appropriate cache headers:
-  - For rev-pinned assets (rev matched + asset type): `Cache-Control: public, max-age=31536000, immutable`
+  - For rev-pinned assets (rev matched + asset type): `Cache-Control: public, max-age=31536000, immutable`,
+    or `private, max-age=31536000, immutable` when `conn.assigns.outerfaces_private_asset`
+    is set (a file only some visitors may fetch; see `OddRouteAccessPlug`)
   - For bootstrap/non-rev/index HTML: `Cache-Control: no-store, no-cache, must-revalidate`
 
   The plug uses `register_before_send/2` to set headers right before the response is sent,
@@ -31,6 +33,7 @@ defmodule Outerfaces.Odd.Plugs.OddRevCacheHeadersPlug do
   @behaviour Plug
 
   @immutable_cache_control "public, max-age=31536000, immutable"
+  @private_immutable_cache_control "private, max-age=31536000, immutable"
   @no_cache_control "no-store, no-cache, must-revalidate"
 
   # Asset-like content types that can be cached immutably
@@ -80,9 +83,17 @@ defmodule Outerfaces.Odd.Plugs.OddRevCacheHeadersPlug do
       is_html?(content_type) ->
         put_resp_header(conn, "cache-control", @no_cache_control)
 
-      # Rev matched + asset-like content → immutable
+      # Rev matched + asset-like content → immutable (kept out of shared caches
+      # when only some visitors may fetch it)
       rev_matched && is_cacheable_asset?(content_type) ->
-        put_resp_header(conn, "cache-control", @immutable_cache_control)
+        put_resp_header(
+          conn,
+          "cache-control",
+          if(Map.get(conn.assigns, :outerfaces_private_asset, false),
+            do: @private_immutable_cache_control,
+            else: @immutable_cache_control
+          )
+        )
 
       # Rev matched but not an asset (unknown content type) → be conservative, use no-cache
       rev_matched ->

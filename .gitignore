@@ -25,3 +25,6 @@ outerfaces_ex_odd-*.tar
 
 .DS_Store
 **/.DS_Store
+# Container (Linux) builds, kept apart from the host machine's _build and deps
+/_build_linux/
+/deps_linux/
