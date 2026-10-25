@@ -25,7 +25,6 @@ defmodule Outerfaces.Odd.Plugs.OddRevEndpointPlug do
   """
 
   import Plug.Conn
-  require Logger
   alias Outerfaces.Rev
 
   @behaviour Plug

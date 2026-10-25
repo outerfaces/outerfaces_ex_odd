@@ -49,7 +49,8 @@ defmodule Outerfaces.Odd.Plugs.OddCDNConsumerServeIndex do
          candidate <- Path.expand(rel, root),
          true <- candidate == root or String.starts_with?(candidate, root <> "/"),
          true <- File.regular?(candidate) do
-      mime_type = MIME.from_path(candidate) || "application/octet-stream"
+      # MIME falls back to application/octet-stream itself.
+      mime_type = MIME.from_path(candidate)
       is_javascript = String.contains?(mime_type, "javascript")
       is_css = String.contains?(mime_type, "css")
       is_html = String.contains?(mime_type, "html")
