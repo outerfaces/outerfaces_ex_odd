@@ -201,6 +201,42 @@ defmodule Outerfaces.Odd.RouteManifestTest do
       end
     end
 
+    test "a path that steps out of a public folder is judged by the file it reaches", %{
+      opts: opts
+    } do
+      # styles/ is public; the page it reaches is gated.
+      conn = OddRouteAccessPlug.call(conn(:get, "/styles/../pages/home-page.js"), opts)
+      assert conn.halted and conn.status == 404
+
+      conn = OddRouteAccessPlug.call(signed_in(conn(:get, "/styles/../pages/home-page.js")), opts)
+      refute conn.halted
+      assert conn.assigns.outerfaces_private_asset
+    end
+
+    test "the manifest is never served by a path that reaches it indirectly", %{opts: opts} do
+      for path <- ["/pages/../routes.manifest.json", "/styles/../routes.manifest.json.gz"] do
+        conn = OddRouteAccessPlug.call(signed_in(conn(:get, path)), opts)
+        assert conn.halted and conn.status == 404
+      end
+    end
+
+    test "a rev-pinned path the rev plug has not stripped is refused", %{opts: opts} do
+      # Placed before OddRevProxyPlug, the gate would otherwise pass these as
+      # shell requests and the rev plug would serve the gated page.
+      for path <- [
+            "/__rev/abc123/spa/pages/home-page.js",
+            "/__rev/abc123/cdn/styles/app.css",
+            "/__rev",
+            "//__rev/abc123/spa/pages/home-page.js",
+            "/styles/../__rev/abc123/spa/pages/home-page.js"
+          ],
+          grant <- [&Function.identity/1, &signed_in/1] do
+        # Set as the server would; conn/2 would read "//__rev/..." as a host.
+        conn = OddRouteAccessPlug.call(grant.(%{conn(:get, "/") | request_path: path}), opts)
+        assert conn.halted and conn.status == 404, "#{path} was not refused"
+      end
+    end
+
     test "a shell request carries its status and payload", %{opts: opts} do
       conn = OddRouteAccessPlug.call(conn(:get, "/reports/7"), opts)
       refute conn.halted

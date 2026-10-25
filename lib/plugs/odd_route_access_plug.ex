@@ -12,6 +12,13 @@ defmodule Outerfaces.Odd.Plugs.OddRouteAccessPlug do
   returning the strings the request holds (`["signed_in", "reports:read"]`).
   It is called once per request.
 
+    * A file is judged by the path it reaches once `.` and `..` are resolved,
+      never by the path as sent.
+    * A path still under `/__rev/` is refused with a 404: `OddRevProxyPlug`
+      must run first, and strips that prefix from every path it accepts.
+      Judged unstripped, `/__rev/<rev>/spa/pages/x.js` is no project file, so
+      it would pass as a shell request and the rev plug would then serve the
+      gated `pages/x.js`; refusing it makes the wrong plug order fail closed.
     * Files anyone may fetch are those the manifest lists and their import
       closure with the public routes' pages (`RouteManifest.public_closure/2`).
     * A request for a file of the project that the visitor may not fetch gets
@@ -59,9 +66,15 @@ defmodule Outerfaces.Odd.Plugs.OddRouteAccessPlug do
       |> assign(:outerfaces_route_manifest, manifest)
       |> assign(:outerfaces_route_grants, grants)
 
-    relative = String.trim_leading(conn.request_path, "/")
+    # The file a path reaches, not the path as sent: `styles/../pages/x.js` is
+    # judged as `pages/x.js`, so a public folder can't lend its rule to a
+    # gated file, and no spelling of the manifest's path serves it.
+    relative = project_relative(conn.request_path, opts.static_root)
 
     cond do
+      rev_prefixed?(relative) ->
+        not_found(conn)
+
       manifest_file?(relative, opts.manifest_relative) ->
         not_found(conn)
 
@@ -83,6 +96,25 @@ defmodule Outerfaces.Odd.Plugs.OddRouteAccessPlug do
         |> assign(:outerfaces_route_payload, RouteManifest.client_payload(manifest, grants))
     end
   end
+
+  # The request path relative to the project root after `.` and `..` are
+  # resolved; a path that would leave the root keeps its own spelling, which
+  # matches no project file.
+  defp project_relative(request_path, root) do
+    relative = String.trim_leading(request_path, "/")
+
+    with false <- relative == "",
+         false <- String.contains?(relative, [<<0>>, "\\", ":"]),
+         expanded <- Path.expand(relative, root),
+         true <- String.starts_with?(expanded, root <> "/") do
+      Path.relative_to(expanded, root)
+    else
+      _ -> relative
+    end
+  end
+
+  # A rev-pinned path the rev plug hasn't stripped (it runs after this one).
+  defp rev_prefixed?(relative), do: relative == "__rev" or String.starts_with?(relative, "__rev/")
 
   defp manifest_file?(relative, manifest_relative),
     do: relative == manifest_relative or String.starts_with?(relative, manifest_relative <> ".")
