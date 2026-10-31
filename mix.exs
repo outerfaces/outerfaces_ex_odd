@@ -6,7 +6,7 @@ defmodule OuterfacesOdd.MixProject do
   def project do
     [
       app: :outerfaces_odd,
-      version: "0.2.7",
+      version: "0.2.8",
       elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
       deps: deps(),

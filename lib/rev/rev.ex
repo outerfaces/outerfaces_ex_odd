@@ -9,9 +9,18 @@ defmodule Outerfaces.Rev do
   4. Timestamp fallback (for local dev without git)
 
   The rev value is cached in `:persistent_term` for optimal read performance.
+
+  ## Scoped revs
+
+  A host serving several projects can give each its own rev, so a project's
+  rev moves only when that project changes. `set_rev/2` sets the rev for a
+  scope (any term naming a project, such as its directory name) and
+  `current_rev/1` reads it. A scope with no rev of its own falls back to
+  `current_rev/0`, so the global rev keeps working where scopes aren't used.
   """
 
   @rev_cache_key :outerfaces_rev_current
+  @scoped_cache_key :outerfaces_rev_scoped
 
   @doc """
   Returns the current revision identifier.
@@ -31,6 +40,47 @@ defmodule Outerfaces.Rev do
       nil -> fetch_and_cache_rev()
       rev -> rev
     end
+  end
+
+  @doc """
+  Returns the rev for `scope`, or the global rev when the scope has none of
+  its own (or `scope` is nil).
+
+  ## Examples
+
+      iex> Outerfaces.Rev.set_rev(:docs_site, "7-3f2a9c1d0b7e")
+      :ok
+      iex> Outerfaces.Rev.current_rev(:docs_site)
+      "7-3f2a9c1d0b7e"
+
+  """
+  @spec current_rev(term()) :: String.t()
+  def current_rev(nil), do: current_rev()
+
+  def current_rev(scope) do
+    case :persistent_term.get(@scoped_cache_key, %{}) do
+      %{^scope => rev} -> rev
+      _ -> current_rev()
+    end
+  end
+
+  @doc "Sets the rev for `scope`, leaving the global rev and other scopes as they are."
+  @spec set_rev(term(), String.t()) :: :ok
+  def set_rev(scope, rev) when not is_nil(scope) and is_binary(rev) do
+    revs = :persistent_term.get(@scoped_cache_key, %{})
+    :persistent_term.put(@scoped_cache_key, Map.put(revs, scope, rev))
+    :ok
+  end
+
+  @doc "The revs set per scope, as a map of scope => rev."
+  @spec scoped_revs() :: %{optional(term()) => String.t()}
+  def scoped_revs, do: :persistent_term.get(@scoped_cache_key, %{})
+
+  @doc "Removes every scope's rev, so each falls back to the global rev again."
+  @spec clear_scoped_revs() :: :ok
+  def clear_scoped_revs do
+    :persistent_term.erase(@scoped_cache_key)
+    :ok
   end
 
   @doc """

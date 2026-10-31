@@ -13,6 +13,13 @@ defmodule Outerfaces.Odd.Plugs.OddRevProxyPlug do
 
       plug OddRevProxyPlug, mismatch_behavior: :redirect  # or :conflict
 
+  `:rev_scope` checks rev-pinned URLs against that scope's rev
+  (`Outerfaces.Rev.current_rev/1`) instead of the global one, and assigns
+  `outerfaces_rev` on every request, rev-pinned or not, so the rofl HTML, CSS
+  and JS plugs downstream pin to the scope's rev too:
+
+      plug OddRevProxyPlug, mismatch_behavior: :redirect, rev_scope: :docs_site
+
   ## Conn Assigns
 
   - `outerfaces_rev` - The rev value extracted from the URL (if present)
@@ -39,7 +46,8 @@ defmodule Outerfaces.Odd.Plugs.OddRevProxyPlug do
   @impl true
   def init(opts) do
     %{
-      mismatch_behavior: Keyword.get(opts, :mismatch_behavior, :redirect)
+      mismatch_behavior: Keyword.get(opts, :mismatch_behavior, :redirect),
+      rev_scope: Keyword.get(opts, :rev_scope)
     }
   end
 
@@ -62,8 +70,10 @@ defmodule Outerfaces.Odd.Plugs.OddRevProxyPlug do
         end
 
       :no_rev ->
-        # No rev prefix, pass through unchanged
-        conn
+        # No rev prefix: pass through, pinned to the scope's rev when there is one.
+        if opts.rev_scope,
+          do: assign(conn, :outerfaces_rev, Rev.current_rev(opts.rev_scope)),
+          else: conn
     end
   end
 
@@ -83,7 +93,7 @@ defmodule Outerfaces.Odd.Plugs.OddRevProxyPlug do
   @spec handle_rev_request(Plug.Conn.t(), String.t(), String.t(), String.t(), map()) ::
           Plug.Conn.t()
   defp handle_rev_request(conn, rev, namespace, stripped_path, opts) do
-    current_rev = Rev.current_rev()
+    current_rev = Rev.current_rev(opts.rev_scope)
 
     if rev == current_rev do
       # Rev matches - strip prefix and continue

@@ -18,6 +18,17 @@ defmodule Outerfaces.Odd.Plugs.OddRevEndpointPlug do
         "schema_version": "1.0"
       }
 
+  ## Options
+
+  - `:rev_scope` - answers with that scope's rev (`Outerfaces.Rev.current_rev/1`)
+    instead of the global one, for a host serving one project of several.
+  - `:metadata` - `{module, function, args}` returning a map, carried in the
+    response under `"meta"`: whatever else a client should compare along with
+    the rev. Called on every request, so it should be cheap. Without it there
+    is no `"meta"` key.
+
+      plug OddRevEndpointPlug, rev_scope: :docs_site, metadata: {MyApp.Deploy, :rev_meta, []}
+
   ## Cache Headers
 
   Always returns `Cache-Control: no-store, no-cache, must-revalidate` to ensure
@@ -32,12 +43,14 @@ defmodule Outerfaces.Odd.Plugs.OddRevEndpointPlug do
   @rev_endpoint_path "/__outerfaces__/rev.json"
 
   @impl true
-  def init(opts), do: opts
+  def init(opts) do
+    %{rev_scope: Keyword.get(opts, :rev_scope), metadata: Keyword.get(opts, :metadata)}
+  end
 
   @impl true
-  def call(conn, _opts) do
+  def call(conn, opts) do
     if conn.request_path == @rev_endpoint_path do
-      serve_rev_json(conn)
+      serve_rev_json(conn, opts)
     else
       conn
     end
@@ -45,16 +58,18 @@ defmodule Outerfaces.Odd.Plugs.OddRevEndpointPlug do
 
   # Private Functions
 
-  @spec serve_rev_json(Plug.Conn.t()) :: Plug.Conn.t()
-  defp serve_rev_json(conn) do
-    current_rev = Rev.current_rev()
+  @spec serve_rev_json(Plug.Conn.t(), map()) :: Plug.Conn.t()
+  defp serve_rev_json(conn, opts) do
+    current_rev = Rev.current_rev(opts.rev_scope)
 
     response_body =
-      Jason.encode!(%{
+      %{
         rev: current_rev,
         schema_version: "1.0",
         timestamp: System.system_time(:second)
-      })
+      }
+      |> put_metadata(opts.metadata)
+      |> Jason.encode!()
 
     conn
     |> put_resp_header("content-type", "application/json; charset=utf-8")
@@ -67,5 +82,14 @@ defmodule Outerfaces.Odd.Plugs.OddRevEndpointPlug do
     |> put_resp_header("access-control-allow-headers", "Content-Type")
     |> send_resp(200, response_body)
     |> halt()
+  end
+
+  defp put_metadata(body, nil), do: body
+
+  defp put_metadata(body, {module, function, args}) do
+    case apply(module, function, args) do
+      meta when is_map(meta) -> Map.put(body, :meta, meta)
+      _ -> body
+    end
   end
 end
